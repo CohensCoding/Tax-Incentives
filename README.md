@@ -29,24 +29,34 @@ Every program entry carries a structured `verification_method` field
 (`official_source_live`, `official_source_archived`, `secondary_source`,
 `model_knowledge_unverified`). The export gate
 (`python -m scripts.validate export`) hard-fails on any program that has not
-been verified against a live or archived official source. Downstream
-consumers (the budgeting AI, LLM exports, public APIs) must run that gate
-before producing output. Unverified entries are allowed inside the DB during
-development; they must not leak out.
+been verified against a live or archived official source, AND on any
+verified program whose source `local_path` doesn't point to a real file
+under `data/raw/`. Downstream consumers (the budgeting AI, LLM exports,
+public APIs) must run that gate before producing output. Unverified
+entries are allowed inside the DB during development; they must not leak
+out.
+
+The current Tier-1 entries (UK AVEC + IFTC + VFX credit; NZ Production /
+PDV Rebates ± 5% Uplifts) are `official_source_archived` — parsed from
+captures of the canonical gov.uk, BFI, and NZFC pages held under
+`data/raw/`.
 
 ---
 
 ## What's in the database right now
 
-| Jurisdiction   | Program                                              | Headline rate | ATL eligible | Verification              |
-| -------------- | ---------------------------------------------------- | ------------- | ------------ | ------------------------- |
-| United Kingdom | Audio-Visual Expenditure Credit (AVEC) — Film        | 34%           | Yes          | model_knowledge_unverified |
-| United Kingdom | Independent Film Tax Credit (IFTC)                   | 53%           | Yes          | model_knowledge_unverified |
-| New Zealand    | NZ Screen Production Rebate — International (NZSPR)  | 20% (+5%)     | Yes (capped) | model_knowledge_unverified |
+| Jurisdiction   | Program                                              | Headline rate | ATL eligible | Verification              | Verified |
+| -------------- | ---------------------------------------------------- | ------------- | ------------ | ------------------------- | -------- |
+| United Kingdom | Audio-Visual Expenditure Credit (AVEC) — Film        | 34%           | Yes          | official_source_archived  | 2026-02-19 |
+| United Kingdom | Enhanced AVEC for Independent Film (IFTC)            | 53%           | Yes          | official_source_archived  | 2026-02-19 |
+| United Kingdom | AVEC VFX Additional Credit (Film & HETV)             | 39%           | No (VFX only)| official_source_archived  | 2026-02-19 |
+| New Zealand    | NZSPR International — Live Action Production Rebate  | 20%           | Yes          | official_source_archived  | 2026-05-12 |
+| New Zealand    | NZSPR International — Production Rebate 5% Uplift    | +5%           | Yes          | official_source_archived  | 2026-05-12 |
+| New Zealand    | NZSPR International — PDV Rebate                     | 20%           | Yes          | official_source_archived  | 2026-05-12 |
+| New Zealand    | NZSPR International — PDV Rebate 5% Uplift           | +5%           | Yes          | official_source_archived  | 2026-05-12 |
 
-All three current entries are blocked by the export gate until they are
-re-verified against a live or archived official source. See **Fetch access
-status** below for why.
+All entries are parsed from archived captures of the canonical sources held
+under `data/raw/`. The export gate passes — downstream consumers may proceed.
 
 Full Tier-1 / Tier-2 / Tier-3 jurisdiction roadmap lives in the project brief
 and will be checked off as entries are added.
@@ -183,34 +193,34 @@ must show its FX provenance the same way it shows its incentive provenance.
 
 ## Fetch access status
 
-The Tier-1 seed entries (UK AVEC, UK IFTC, NZ NZSPR) currently carry
-`verification_method = "model_knowledge_unverified"` because the canonical
-sources could not be fetched during the initial build:
+The sandbox in which this database is being built blocks outbound HTTP to
+every official jurisdiction source — `gov.uk`, `bfi.org.uk`,
+`nzfilm.co.nz`, and `web.archive.org` all return a fixed 21-byte
+`"Host not in allowlist"` from the egress proxy regardless of User-Agent,
+content-API endpoint, or archive fallback. Only PyPI is reachable.
 
-* `gov.uk`, `bfi.org.uk`, `nzfilm.co.nz`, and the Wayback Machine all
-  returned an identical 21-byte `"Host not in allowlist"` response from the
-  sandbox egress proxy.
-* This is **not** a CDN-level User-Agent block — the proxy refuses the
-  connection regardless of headers, content-API endpoint, or archive
-  fallback. The only confirmed reachable host from the sandbox is PyPI.
+The Tier-1 entries were therefore verified via **manually downloaded
+captures** (option 3 below) saved under `data/raw/{slug}/`. Their
+`verification_method` is `official_source_archived` and every source row
+points at the saved file. The same approach is the supported path for
+adding any new jurisdiction from inside the sandbox.
 
-Until at least one of UK or NZ is verified end-to-end from a real source, no
-new jurisdictions will be added and the query interface
-(`api/query.py`, `estimate_rebate`) will not be built. The pipeline must be
-proven against a real source before it is scaled.
-
-**Options to unblock**, in rough order of preference:
+**Available unblock paths**, in rough order of preference:
 
 1. Expand the sandbox egress allowlist to include `gov.uk`, `bfi.org.uk`,
-   `nzfilm.co.nz`, and `web.archive.org`. Then run the per-jurisdiction
-   scrapers under `scripts/scrape/` (to be written).
+   `nzfilm.co.nz`, and `web.archive.org`. Then run per-jurisdiction
+   scrapers under `scripts/scrape/` (to be written) that fetch live and
+   flip entries to `official_source_live`.
 2. Run the scraping pipeline in an unrestricted environment and commit the
-   resulting `data/raw/{jurisdiction}/...` files and updated
+   resulting `data/raw/{jurisdiction}/...` files plus updated
    `data/processed/*.json`.
-3. Manually download the canonical PDFs/HTML from the official sites and drop
-   them into `data/raw/{jurisdiction}/{YYYY-MM-DD}_{source_name}.{ext}`. A
-   parser then reads from `data/raw/` only, no network required, and flips
-   the entry to `verification_method = "official_source_archived"`.
+3. **Manually capture the canonical HTML/PDFs and drop them into
+   `data/raw/{jurisdiction}/{YYYY-MM-DD}_{source_name}.{ext}`** (the
+   current Tier-1 approach). A parser then reads from `data/raw/` only,
+   no network required, and the entry is flipped to
+   `official_source_archived`. The validator's archive-file existence
+   check requires the saved file to exist before the verification claim
+   is accepted.
 
 ---
 

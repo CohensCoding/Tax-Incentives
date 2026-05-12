@@ -11,71 +11,113 @@
       "program_name": "Audio-Visual Expenditure Credit (AVEC) — Film",
       "incentive_type": "tax_credit_refundable",
       "headline_rate_pct": 34.0,
-      "rate_details": "34% expenditure credit on qualifying UK core expenditure for film and high-end TV. The credit is brought into account as taxable receipt; corporation tax (currently 25%) is deducted, leaving a net benefit of approximately 25.5% of qualifying spend. Animation and children's TV qualify at 39% under the AVEC framework (see separate program entries when added).",
+      "rate_details": "34% expenditure credit on qualifying UK core expenditure for film and high-end TV. Qualifying costs are the lower of (a) 80% of total core costs or (b) actual UK core costs. The expenditure credit is taxed at the main rate of Corporation Tax and used first to settle the FPC's tax liabilities; any remainder is paid as a payable credit. Net benefit after corporation tax (25%) is approximately 25.5% of qualifying spend. No cap on the amount that can be claimed. Animation, animated film, and children's TV qualify under AVEC at 39% — recorded here as a separate observation; this program entry covers live-action film only.",
       "minimum_spend": null,
-      "minimum_spend_notes": "No fixed minimum spend amount. Instead, the program requires that at least 10% of the production's total core expenditure is UK expenditure.",
+      "minimum_spend_notes": "No fixed minimum spend amount. The program requires that at least 10% of total core expenditure is UK expenditure ('used or consumed' in the UK per HMRC's working definition).",
       "cap_per_project": null,
       "annual_program_cap": null,
       "atl_eligible": true,
-      "atl_cap_notes": "No specific cap on above-the-line spend. Cast and crew wages qualify as UK core expenditure to the extent services are performed in the UK, regardless of the individual's nationality or residence — a key reason the UK is competitive for star-led productions. Qualifying UK expenditure used to compute the credit is capped at 80% of total core expenditure.",
-      "qualifying_spend_summary": "UK 'core expenditure': expenditure on pre-production, principal photography, and post-production incurred on goods and services used or consumed in the UK. Includes cast/crew wages for services performed in the UK.",
-      "non_qualifying_spend": "Development costs, financing/legal costs, marketing and distribution, deferments, and expenditure on goods/services not used or consumed in the UK.",
-      "application_process": "1) Apply to the BFI Certification Unit for a British cultural certificate (interim during production, final on completion). 2) Production must be made by a UK Film Production Company (FPC) within the corporation tax net. 3) Claim the credit through the FPC's corporation tax return (CT600) with supporting schedules.",
-      "payment_timing": "Claimed via the FPC's corporation tax return after the end of the accounting period. Payable element of the credit is typically settled by HMRC within a few months of a clean claim; complex claims may take longer.",
+      "atl_cap_notes": "No specific cap on above-the-line spend; cast and crew wages qualify as UK core expenditure to the extent services are performed in the UK, irrespective of nationality. The aggregate cap on qualifying expenditure is the 80%-of-total-core-costs rule (vs actual UK core costs, whichever is lower).",
+      "qualifying_spend_summary": "UK 'core expenditure': pre-production, principal photography, and post-production goods/services 'used or consumed' in the UK. Includes cast/crew wages for services performed in the UK regardless of the individual's nationality.",
+      "non_qualifying_spend": "Goods/services not used or consumed in the UK; development costs; financing/legal costs; marketing and distribution.",
+      "application_process": "1) BFI Certification Unit issues a British cultural certificate (interim during production, final on completion). 2) The Film Production Company (FPC) must be within the UK Corporation Tax net and responsible for pre-production, principal photography, post-production, and delivery — actively engaged in planning/decision-making and directly contracting for rights/goods/services. 3) Claim via the FPC's Company Tax Return; for returns submitted on or after 6 April 2026 the CT600P Creative Industries supplementary page is required. 4) Submit the additional information form: British cultural certificate, statements of UK vs non-UK core costs, breakdown of costs by category, connected-party transaction details. Claims may be made, amended, or withdrawn up to 2 years after the end of the period of account.",
+      "payment_timing": "Claimed via Company Tax Return after the end of the accounting period. The expenditure credit is taxed at main Corporation Tax rate, applied to the company's tax liabilities (or surrendered to group companies), with any remainder paid as a payable credit by HMRC.",
       "sunset_date": null,
-      "last_verified_date": "2026-05-12",
-      "verification_method": "model_knowledge_unverified",
+      "last_verified_date": "2026-02-19",
+      "verification_method": "official_source_archived",
       "qualifying_budget_ceiling": null,
       "qualifying_budget_ceiling_notes": null,
-      "notes": "Live re-verification against gov.uk / BFI required before downstream consumption. AVEC replaced the previous Film Tax Relief (FTR) regime from 1 January 2024; productions that started principal photography under FTR may still claim under the legacy regime during a transition window — verify which regime applies to a given project.",
+      "notes": "AVEC replaced Film Tax Relief from 1 January 2024. From 1 April 2025 new productions must claim under AVEC; from 1 April 2027 all productions must claim under AVEC (legacy reliefs end). last_verified_date is the gov.uk page's 'Last updated' timestamp; BFI's overview page does not carry a per-page revision timestamp.",
       "sources": [
         {
-          "url": "https://www.gov.uk/guidance/claiming-audio-visual-expenditure-credits-for-corporation-tax",
+          "url": "https://www.gov.uk/guidance/claim-audio-visual-expenditure-credits-for-corporation-tax",
           "source_title": "HMRC — Claiming Audio-Visual Expenditure Credits for Corporation Tax",
           "source_type": "official_government",
-          "accessed_date": "2026-05-12"
+          "accessed_date": "2026-05-12",
+          "local_path": "data/raw/united_kingdom/2026-05-12_govuk_avec_guidance.html"
         },
         {
-          "url": "https://www.bfi.org.uk/apply-british-certification-tax-relief/audio-visual-expenditure-credit-avec",
-          "source_title": "BFI — Audio-Visual Expenditure Credit (AVEC)",
+          "url": "https://www.bfi.org.uk/apply-british-certification-expenditure-credits/about-uk-creative-industry-expenditure-credits",
+          "source_title": "BFI — About UK creative industry expenditure credits",
           "source_type": "film_office",
-          "accessed_date": "2026-05-12"
+          "accessed_date": "2026-05-12",
+          "local_path": "data/raw/united_kingdom/2026-05-12_bfi_avec_overview.html"
         }
       ]
     },
     {
-      "program_name": "Independent Film Tax Credit (IFTC)",
+      "program_name": "Enhanced AVEC for Independent Film (IFTC)",
       "incentive_type": "tax_credit_refundable",
       "headline_rate_pct": 53.0,
-      "rate_details": "Enhanced rate of 53% expenditure credit on qualifying UK core expenditure for low-budget independent films that satisfy the BFI's IFTC eligibility test. Net benefit after corporation tax is approximately 39.75% of qualifying UK spend. The IFTC operates within the AVEC framework; productions claim either standard AVEC at 34% or IFTC at 53%, not both.",
+      "rate_details": "Enhanced AVEC pays a 53% expenditure credit on qualifying UK core expenditure for low-budget independent films certified by the BFI. The 53% rate is payable ONLY on the first £15 million of total core expenditure. Productions with total core expenditure between £15M and £23.5M can claim Enhanced AVEC on the first £15M of core expenditure only; the balance is not eligible. Productions with total core expenditure above £23.5M are not eligible for Enhanced AVEC at all and must claim standard AVEC at 34% instead. Qualifying costs are the lower of (a) 80% of total core costs or (b) actual UK core costs, applied within the £15M base ceiling. Net benefit after Corporation Tax on the eligible portion is approximately 39.75%. IFTC and standard AVEC are mutually exclusive on a given production. The VFX Additional Credit is not available for productions claiming Enhanced AVEC.",
       "minimum_spend": null,
-      "minimum_spend_notes": "No fixed minimum spend. Subject to AVEC's general requirement that at least 10% of core expenditure is UK expenditure.",
+      "minimum_spend_notes": "No fixed minimum spend. Inherits AVEC's 10%-of-core-expenditure UK spend requirement.",
       "cap_per_project": null,
       "annual_program_cap": null,
       "atl_eligible": true,
-      "atl_cap_notes": "Same ATL treatment as standard AVEC: cast/crew wages for services performed in the UK qualify. The 80%-of-core-expenditure cap on qualifying UK expenditure applies.",
-      "qualifying_spend_summary": "Same definition of UK core expenditure as standard AVEC.",
-      "non_qualifying_spend": "Same exclusions as standard AVEC.",
-      "application_process": "1) Apply to BFI Certification Unit for both a standard British cultural certificate and an IFTC certificate. 2) Production must satisfy the IFTC creative-connection criteria (UK writer or director, or qualifying co-production). 3) Total core expenditure must not exceed the qualifying_budget_ceiling. 4) Claim via the FPC's CT600.",
-      "payment_timing": "Same as standard AVEC.",
+      "atl_cap_notes": "Same ATL treatment as standard AVEC; the £15M base ceiling and the 80%/UK-core-costs cap apply to the qualifying expenditure on which the 53% rate is computed.",
+      "qualifying_spend_summary": "Same definition of UK core expenditure as standard AVEC, capped at £15M of total core expenditure for the purpose of computing Enhanced AVEC.",
+      "non_qualifying_spend": "Same exclusions as standard AVEC, plus any core expenditure above the £15M base ceiling (for projects between £15M and £23.5M); no Enhanced AVEC at all for projects above £23.5M.",
+      "application_process": "1) Production must begin principal photography on or after 1 April 2024. 2) Total core expenditure must not exceed £23.5M. 3) Meet the creative connection requirement: lead director is a British citizen or UK resident, OR lead writer is a British citizen or UK resident, OR the film qualifies as an official co-production. 4) BFI Certification Unit certifies the film as low-budget under the IFTC test, alongside the standard British cultural certificate. 5) Claim via the FPC's Company Tax Return; Enhanced AVEC is claimable from 1 April 2025 on expenditure incurred on or after 1 April 2024.",
+      "payment_timing": "Same Corporation Tax Return mechanism as standard AVEC.",
       "sunset_date": null,
-      "last_verified_date": "2026-05-12",
-      "verification_method": "model_knowledge_unverified",
-      "qualifying_budget_ceiling": 15000000.0,
-      "qualifying_budget_ceiling_notes": "Total core expenditure must not exceed £15M for the production to be eligible for IFTC. Productions above this threshold fall back to standard AVEC at 34%. This is an eligibility gate, not a cap on the credit amount.",
-      "notes": "Live re-verification against gov.uk / BFI required before downstream consumption. IFTC commenced April 2024 for expenditure incurred from that date.",
+      "last_verified_date": "2026-02-19",
+      "verification_method": "official_source_archived",
+      "qualifying_budget_ceiling": 23500000.0,
+      "qualifying_budget_ceiling_notes": "Enhanced AVEC is payable for the first £15 million of total core expenditure. Projects with total core expenditure of £15 million to £23.5 million can claim Enhanced AVEC for the first £15 million of core expenditure only. For projects above £23.5 million only standard AVEC can be claimed. (Phrasing from BFI 'About UK creative industry expenditure credits'.)",
+      "notes": "The £15M base / £23.5M eligibility two-stage structure is compositional and is NOT captured by the single headline_rate_pct field. A future estimate_rebate function must compute Enhanced AVEC as 53% × min(qualifying_spend, 80% × min(total_core, £15M)) — using qualifying_budget_ceiling for the hard eligibility cut, and the £15M base described in qualifying_budget_ceiling_notes for the rate base. last_verified_date is the gov.uk page's 'Last updated' timestamp.",
       "sources": [
         {
-          "url": "https://www.bfi.org.uk/apply-british-certification-tax-relief/independent-film-tax-credit-iftc",
-          "source_title": "BFI — Independent Film Tax Credit (IFTC)",
-          "source_type": "film_office",
-          "accessed_date": "2026-05-12"
-        },
-        {
-          "url": "https://www.gov.uk/guidance/claiming-audio-visual-expenditure-credits-for-corporation-tax",
+          "url": "https://www.gov.uk/guidance/claim-audio-visual-expenditure-credits-for-corporation-tax",
           "source_title": "HMRC — Claiming Audio-Visual Expenditure Credits for Corporation Tax",
           "source_type": "official_government",
-          "accessed_date": "2026-05-12"
+          "accessed_date": "2026-05-12",
+          "local_path": "data/raw/united_kingdom/2026-05-12_govuk_avec_guidance.html"
+        },
+        {
+          "url": "https://www.bfi.org.uk/apply-british-certification-expenditure-credits/about-uk-creative-industry-expenditure-credits",
+          "source_title": "BFI — About UK creative industry expenditure credits",
+          "source_type": "film_office",
+          "accessed_date": "2026-05-12",
+          "local_path": "data/raw/united_kingdom/2026-05-12_bfi_avec_overview.html"
+        }
+      ]
+    },
+    {
+      "program_name": "AVEC VFX Additional Credit (Film & HETV)",
+      "incentive_type": "tax_credit_refundable",
+      "headline_rate_pct": 39.0,
+      "rate_details": "Additional expenditure credit at 39% on qualifying UK visual effects (VFX) costs, claimed on top of standard 34% AVEC for film and high-end TV productions. VFX costs are exempt from the 80% cap on total core costs that applies to the main AVEC computation. Available only for productions claiming the standard 34% rate of AVEC for film or HETV. NOT available for productions claiming Enhanced AVEC (IFTC), nor for animation/children's TV (which have their own 39% rate under main AVEC).",
+      "minimum_spend": null,
+      "minimum_spend_notes": "Inherits the parent AVEC 10%-of-core-expenditure UK spend requirement; the VFX credit itself has no independent minimum.",
+      "cap_per_project": null,
+      "annual_program_cap": null,
+      "atl_eligible": false,
+      "atl_cap_notes": "atl_eligible=FALSE because this credit applies only to VFX costs, which are below-the-line by nature. ATL talent qualifies under the parent standard AVEC entry, not under this credit.",
+      "qualifying_spend_summary": "Qualifying UK VFX costs incurred on or after 1 January 2025.",
+      "non_qualifying_spend": "Non-VFX production costs; VFX costs incurred before 1 January 2025; any VFX costs on productions claiming Enhanced AVEC (IFTC).",
+      "application_process": "Claimed alongside the standard AVEC claim via the FPC's Company Tax Return. Administered by HMRC, not by the BFI Certification Unit; cultural certification for the underlying production is via the standard AVEC route.",
+      "payment_timing": "Same Corporation Tax Return mechanism as standard AVEC.",
+      "sunset_date": null,
+      "last_verified_date": "2026-02-19",
+      "verification_method": "official_source_archived",
+      "qualifying_budget_ceiling": null,
+      "qualifying_budget_ceiling_notes": null,
+      "notes": "VFX additional credit applies to qualifying VFX expenditure incurred from 1 January 2025; claimable from 1 April 2025 alongside the parent standard AVEC claim. Not administered by the BFI Certification Unit. last_verified_date is the gov.uk page's 'Last updated' timestamp.",
+      "sources": [
+        {
+          "url": "https://www.gov.uk/guidance/claim-audio-visual-expenditure-credits-for-corporation-tax",
+          "source_title": "HMRC — Claiming Audio-Visual Expenditure Credits for Corporation Tax",
+          "source_type": "official_government",
+          "accessed_date": "2026-05-12",
+          "local_path": "data/raw/united_kingdom/2026-05-12_govuk_avec_guidance.html"
+        },
+        {
+          "url": "https://www.bfi.org.uk/apply-british-certification-expenditure-credits/about-uk-creative-industry-expenditure-credits",
+          "source_title": "BFI — About UK creative industry expenditure credits",
+          "source_type": "film_office",
+          "accessed_date": "2026-05-12",
+          "local_path": "data/raw/united_kingdom/2026-05-12_bfi_avec_overview.html"
         }
       ]
     }
