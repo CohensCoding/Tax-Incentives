@@ -114,6 +114,24 @@ class Jurisdiction(BaseModel):
         return v
 
 
+class ChangeLogEntry(BaseModel):
+    """Manually-declared change_log entry, written by the loader after the
+    auto-diff pass. Use these to record policy events that don't change a
+    TRACKED_FIELDS value — e.g., a textual reform to atl_cap_notes, the
+    addition of a new uplift criterion, or a sunset extension whose dates
+    aren't structurally captured. The loader deduplicates against entries
+    already present from previous loads, so reloads are idempotent."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    program_name: str        # natural-key reference to a program in this file
+    field_changed: str
+    old_value: Optional[str] = None
+    new_value: Optional[str] = None
+    changed_date: date
+    change_reason: str       # required: manual entries must explain themselves
+
+
 class JurisdictionFile(BaseModel):
     """Root of a data/processed/{slug}.json file."""
 
@@ -121,3 +139,4 @@ class JurisdictionFile(BaseModel):
 
     jurisdiction: Jurisdiction
     programs: list[IncentiveProgram] = Field(min_length=1)
+    change_log_entries: list[ChangeLogEntry] = Field(default_factory=list)

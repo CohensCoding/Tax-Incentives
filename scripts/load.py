@@ -25,7 +25,13 @@ from typing import Any
 
 import click
 
-from scripts.models import IncentiveProgram, Jurisdiction, JurisdictionFile, Source
+from scripts.models import (
+    ChangeLogEntry,
+    IncentiveProgram,
+    Jurisdiction,
+    JurisdictionFile,
+    Source,
+)
 from scripts.validate import validate_all_files, validate_db, _print_report
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -220,6 +226,61 @@ def _snapshot_existing(con: sqlite3.Connection) -> tuple[
     return programs, keyed_log
 
 
+def _insert_manual_log_entries(
+    cur: sqlite3.Cursor,
+    jurisdiction_display_name: str,
+    entries: list[ChangeLogEntry],
+    new_id_by_key: dict[ProgramKey, int],
+    preserved_log: list[tuple],
+) -> tuple[int, int, int]:
+    """Insert manually-declared change_log entries, deduplicating against
+    entries already present in the snapshot's preserved_log so that reloads
+    of the same JSON don't produce duplicate rows.
+
+    Returns (inserted, skipped_duplicate, skipped_unknown_program).
+    """
+    preserved_keys: set[tuple] = {
+        (key, changed_date_s, field, old_v, new_v)
+        for key, changed_date_s, field, old_v, new_v, _reason in preserved_log
+    }
+
+    n_inserted = n_dup = n_unknown = 0
+    for entry in entries:
+        nk: ProgramKey = (jurisdiction_display_name, entry.program_name)
+        # Match the loader's stored form: dates are ISO strings, values are
+        # str() of their JSON content (or None).
+        natural_key = (
+            nk,
+            entry.changed_date.isoformat(),
+            entry.field_changed,
+            None if entry.old_value is None else str(entry.old_value),
+            None if entry.new_value is None else str(entry.new_value),
+        )
+        if natural_key in preserved_keys:
+            n_dup += 1
+            continue
+        new_pid = new_id_by_key.get(nk)
+        if new_pid is None:
+            click.echo(click.style(
+                f"WARN  change_log_entry references unknown program "
+                f"{entry.program_name!r} in {jurisdiction_display_name}",
+                fg="yellow",
+            ))
+            n_unknown += 1
+            continue
+        record_change(
+            cur,
+            new_pid,
+            entry.field_changed,
+            entry.old_value,
+            entry.new_value,
+            changed_date=entry.changed_date,
+            reason=entry.change_reason,
+        )
+        n_inserted += 1
+    return n_inserted, n_dup, n_unknown
+
+
 def _replay_and_diff_change_log(
     cur: sqlite3.Cursor,
     snapshot: dict[ProgramKey, dict[str, Any]],
@@ -305,11 +366,13 @@ def load(db_path: Path = DEFAULT_DB, skip_validation: bool = False) -> int:
     files = sorted(PROCESSED_DIR.glob("*.json"))
     n_jurisdictions = n_programs = n_sources = 0
     new_id_by_key: dict[ProgramKey, int] = {}
+    parsed_files: list[JurisdictionFile] = []
 
     for path in files:
         click.echo(f"→ Loading {path.name}")
         raw = json.loads(path.read_text(encoding="utf-8"))
         jf = JurisdictionFile.model_validate(raw)
+        parsed_files.append(jf)
         jid = _insert_jurisdiction(cur, jf.jurisdiction)
         n_jurisdictions += 1
         for prog in jf.programs:
@@ -323,6 +386,15 @@ def load(db_path: Path = DEFAULT_DB, skip_validation: bool = False) -> int:
     n_preserved, n_diff = _replay_and_diff_change_log(
         cur, snapshot, preserved_log, new_id_by_key, date.today()
     )
+    n_manual = n_manual_dup = n_manual_unknown = 0
+    for jf in parsed_files:
+        i, d, u = _insert_manual_log_entries(
+            cur, jf.jurisdiction.display_name, jf.change_log_entries,
+            new_id_by_key, preserved_log,
+        )
+        n_manual += i
+        n_manual_dup += d
+        n_manual_unknown += u
 
     con.commit()
     con.close()
@@ -334,11 +406,12 @@ def load(db_path: Path = DEFAULT_DB, skip_validation: bool = False) -> int:
             fg="green",
         )
     )
-    if n_preserved or n_diff:
+    if n_preserved or n_diff or n_manual or n_manual_dup:
         click.echo(
             click.style(
-                f"  change_log: {n_preserved} preserved, {n_diff} new diff entr"
-                f"{'y' if n_diff == 1 else 'ies'}",
+                f"  change_log: {n_preserved} preserved, {n_diff} auto-diff, "
+                f"{n_manual} manual added"
+                + (f", {n_manual_dup} manual already-present" if n_manual_dup else ""),
                 fg="cyan",
             )
         )

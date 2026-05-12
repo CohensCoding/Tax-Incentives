@@ -17,7 +17,7 @@
       "cap_per_project": null,
       "annual_program_cap": null,
       "atl_eligible": true,
-      "atl_cap_notes": "Fees and expenses for non-NZ-resident personnel working on the production in New Zealand qualify provided they work on the production for at least 14 days total; cast members are exempt from the 14-day rule. The NZFC 'Criteria document' (Section 3) holds the full per-individual and aggregate caps on non-resident ATL — those caps are not stated on the public overview page captured here and must be confirmed against the Criteria document before being used in a producer-facing estimate.",
+      "atl_cap_notes": "ATL fully eligible without cap on QNZPE. The cap on above-the-line costs that existed in the pre-2026 Criteria was removed by the 7 November 2025 ministerial reform, effective 1 January 2026 (NZFC news release, 19 December 2025: 'The cap on above-the-line costs will be removed.'). ATL fees and expenses for cast and crew working on the production in New Zealand qualify; non-resident non-cast personnel still need to work on the production for at least 14 days total to count their fees as QNZPE. Productions that started principal photography before 1 January 2026 are assessed under earlier Criteria that included ATL cap provisions — see CRITERIA_FETCH_STATUS.md for the legacy document references.",
       "qualifying_spend_summary": "QNZPE includes: services provided in New Zealand; use of land located in New Zealand; goods purchased/hired/leased in New Zealand (sourced locally); goods sourced overseas only if not otherwise available in NZ, located in NZ during production, and purchased/hired/leased from a New Zealand resident who typically supplies that type of good; fees and expenses for non-NZ-resident personnel working on the production in NZ (cast exempt from the 14-day rule).",
       "non_qualifying_spend": "Advertising, news, and current affairs productions are excluded. Expenditure on services not provided in NZ; non-locally-sourced goods (with the limited exception above for unavailable-in-NZ goods).",
       "application_process": "1) Pre-register with NZFC before principal photography. 2) Applicant must be a New Zealand entity, generally a Special Purpose Vehicle (SPV) established for the production (exceptions available). 3) The production must be intended for theatrical release, TV broadcast, or commercial online distribution. 4) (Optional) Apply for Provisional Certification — a non-binding eligibility opinion. 5) Submit Final application within six months of completion of the production with an independent auditor's report from an NZFC-approved provider. 6) Interim and Final applications are reviewed by Inland Revenue Department (IRD) against tax records and by an Independent Consultant for QNZPE assessment, then approved by the Rebate Panel. 7) On-screen end credit and NZ Film Commission logo required (default text: 'The filmmakers acknowledge the assistance of the New Zealand Government's Screen Production Rebate.').",
@@ -27,7 +27,7 @@
       "verification_method": "official_source_archived",
       "qualifying_budget_ceiling": null,
       "qualifying_budget_ceiling_notes": null,
-      "notes": "Policy changes announced 7 November 2025 by Economic Growth Minister Nicola Willis took effect 1 January 2026 — minimum QNZPE for live-action productions dropped from NZD 15M (theatrical features) to NZD 4M, and is now expressed per format rather than per release channel. NZFC's site does not publish per-page revision timestamps; last_verified_date is the capture date.",
+      "notes": "Policy changes announced 7 November 2025 by Economic Growth Minister Nicola Willis took effect 1 January 2026 — minimum QNZPE for live-action productions dropped from NZD 15M (theatrical features) to NZD 4M, the ATL cap was removed, and the 5% Uplift minimum dropped from NZD 30M to NZD 20M. NZFC's site does not publish per-page revision timestamps for the program pages; last_verified_date is the capture date. The 19 December 2025 NZFC news release is the load-bearing source for the no-ATL-cap claim.",
       "sources": [
         {
           "url": "https://www.nzfilm.co.nz/incentives/rebate-international-nzspr",
@@ -35,6 +35,13 @@
           "source_type": "film_office",
           "accessed_date": "2026-05-12",
           "local_path": "data/raw/new_zealand/2026-05-12_nzfc_international_rebate.html"
+        },
+        {
+          "url": "https://www.nzfilm.co.nz/news/updated-criteria-for-changes-to-international-rebate",
+          "source_title": "NZFC — Updated Criteria for Changes to International Rebate (19 Dec 2025 announcement)",
+          "source_type": "film_office",
+          "accessed_date": "2026-05-12",
+          "local_path": "data/raw/new_zealand/2026-05-12_nzfc_news_release_2026_changes.html"
         }
       ]
     },
@@ -48,7 +55,7 @@
       "cap_per_project": null,
       "annual_program_cap": null,
       "atl_eligible": true,
-      "atl_cap_notes": "Inherits the parent Live Action Production Rebate's ATL treatment; the 5% Uplift applies to the same QNZPE base.",
+      "atl_cap_notes": "Inherits the parent Live Action Production Rebate's ATL treatment — ATL fully eligible without cap. The 5% Uplift applies to the same uncapped QNZPE base.",
       "qualifying_spend_summary": "Same QNZPE base as the parent Live Action Production Rebate.",
       "non_qualifying_spend": "Same exclusions as the parent Live Action Production Rebate.",
       "application_process": "1) Eligibility for the parent Live Action Production Rebate. 2) Apply for Provisional Certification — MANDATORY for the Production 5% Uplift; the Provisional application must be submitted before the start of principal photography. 3) Demonstrate a minimum of 40 of 85 points across the Uplift criteria: Sustainability; New Zealand production activity; New Zealand personnel; Skills and talent development; Innovation and infrastructure; Marketing, promoting and showcasing New Zealand. 4) Final certification and audit alongside the parent rebate.",
@@ -58,7 +65,7 @@
       "verification_method": "official_source_archived",
       "qualifying_budget_ceiling": null,
       "qualifying_budget_ceiling_notes": null,
-      "notes": "Effective 1 January 2026. Awarded on a points basis (40/85 minimum) — award is not automatic for spend-qualifying productions. Stacks additively with the parent 20% Live Action Production Rebate.",
+      "notes": "Effective 1 January 2026. Awarded on a points basis (40/85 minimum) — award is not automatic for spend-qualifying productions. Stacks additively with the parent 20% Live Action Production Rebate. The reform that lowered the minimum from NZD 30M to NZD 20M is documented in the 19 December 2025 NZFC news release.",
       "sources": [
         {
           "url": "https://www.nzfilm.co.nz/incentives/rebate-international-nzspr-5-percent",
@@ -73,6 +80,13 @@
           "source_type": "film_office",
           "accessed_date": "2026-05-12",
           "local_path": "data/raw/new_zealand/2026-05-12_nzfc_international_rebate.html"
+        },
+        {
+          "url": "https://www.nzfilm.co.nz/news/updated-criteria-for-changes-to-international-rebate",
+          "source_title": "NZFC — Updated Criteria for Changes to International Rebate (19 Dec 2025 announcement)",
+          "source_type": "film_office",
+          "accessed_date": "2026-05-12",
+          "local_path": "data/raw/new_zealand/2026-05-12_nzfc_news_release_2026_changes.html"
         }
       ]
     },
@@ -86,7 +100,7 @@
       "cap_per_project": null,
       "annual_program_cap": null,
       "atl_eligible": true,
-      "atl_cap_notes": "PDV QNZPE is fees/expenses for personnel working on PDV activity, hire of studio/office space for PDV activity, equipment for PDV activity, and depreciation of assets used for PDV activity. ATL talent (in the live-action sense) is largely orthogonal to PDV activity, but PDV personnel fees do qualify; consult the NZFC Criteria document for non-resident-personnel caps.",
+      "atl_cap_notes": "ATL fully eligible without cap on QNZPE. The cap on above-the-line costs that existed in the pre-2026 Criteria was removed by the 7 November 2025 ministerial reform, effective 1 January 2026. PDV QNZPE is fees/expenses for PDV personnel, hire of studio/office space for PDV activity, equipment for PDV activity, and depreciation of assets used for PDV activity; for non-resident non-cast PDV personnel the 14-day work threshold applies.",
       "qualifying_spend_summary": "QNZPE for PDV productions: fees and expenses for personnel working on PDV activity; hiring studio and office space for PDV activity; buying and hiring equipment used for PDV activity; depreciation of assets used for PDV activity.",
       "non_qualifying_spend": "Advertising, news, current affairs. Non-PDV production costs.",
       "application_process": "1) Register with NZFC within 20 working days of accepting a qualifying bid for PDV work. 2) Provisional Certification is optional. 3) Submit Final application within six months of completion with an independent auditor's report from an NZFC-approved provider. 4) IRD + Independent Consultant + Rebate Panel review and approve.",
@@ -96,7 +110,7 @@
       "verification_method": "official_source_archived",
       "qualifying_budget_ceiling": null,
       "qualifying_budget_ceiling_notes": null,
-      "notes": "PDV Rebate is administered by NZFC on behalf of MBIE. NZFC's site does not publish per-page revision timestamps; last_verified_date is the capture date.",
+      "notes": "PDV Rebate is administered by NZFC on behalf of MBIE. NZFC's site does not publish per-page revision timestamps; last_verified_date is the capture date. The ATL-cap-removed reform applies to the International Rebate as a whole, including PDV.",
       "sources": [
         {
           "url": "https://www.nzfilm.co.nz/incentives/rebate-international-nzspr",
@@ -104,6 +118,13 @@
           "source_type": "film_office",
           "accessed_date": "2026-05-12",
           "local_path": "data/raw/new_zealand/2026-05-12_nzfc_international_rebate.html"
+        },
+        {
+          "url": "https://www.nzfilm.co.nz/news/updated-criteria-for-changes-to-international-rebate",
+          "source_title": "NZFC — Updated Criteria for Changes to International Rebate (19 Dec 2025 announcement)",
+          "source_type": "film_office",
+          "accessed_date": "2026-05-12",
+          "local_path": "data/raw/new_zealand/2026-05-12_nzfc_news_release_2026_changes.html"
         }
       ]
     },
@@ -117,7 +138,7 @@
       "cap_per_project": null,
       "annual_program_cap": null,
       "atl_eligible": true,
-      "atl_cap_notes": "Inherits the parent PDV Rebate's treatment of personnel fees.",
+      "atl_cap_notes": "Inherits the parent PDV Rebate's treatment of personnel fees — ATL fully eligible without cap.",
       "qualifying_spend_summary": "Same QNZPE base as the parent PDV Rebate.",
       "non_qualifying_spend": "Same exclusions as the parent PDV Rebate.",
       "application_process": "1) Eligibility for the parent PDV Rebate. 2) PDV Activity must start on or after 1 January 2026. 3) Provisional Certification is optional for the PDV Rebate 5% Uplift (unlike the Production Rebate Uplift, where it is mandatory). 4) Demonstrate minimum points across: Promoting NZ PDV Activity; On-the-job training; Industry seminars; Education sector seminars. Minimum points vary based on QNZPE — consult the NZFC criteria for the current scale. 5) Final certification and audit alongside the parent PDV Rebate.",
@@ -127,7 +148,7 @@
       "verification_method": "official_source_archived",
       "qualifying_budget_ceiling": null,
       "qualifying_budget_ceiling_notes": null,
-      "notes": "Effective 1 January 2026 for PDV Activity starting on or after that date. Minimum points threshold for this Uplift is described as varying by QNZPE on the captured page but the scale itself is not published there; treat the points threshold as null/unknown for estimator purposes and require the user to consult NZFC for current values.",
+      "notes": "Effective 1 January 2026 for PDV Activity starting on or after that date. Minimum points threshold for this Uplift is described as varying by QNZPE on the captured page but the scale itself is not published there; treat the points threshold as unknown for estimator purposes and require the user to consult NZFC for current values. Introduced by the 7 November 2025 reform (NZFC news release, 19 December 2025).",
       "sources": [
         {
           "url": "https://www.nzfilm.co.nz/incentives/rebate-international-nzspr-5-percent",
@@ -142,8 +163,49 @@
           "source_type": "film_office",
           "accessed_date": "2026-05-12",
           "local_path": "data/raw/new_zealand/2026-05-12_nzfc_international_rebate.html"
+        },
+        {
+          "url": "https://www.nzfilm.co.nz/news/updated-criteria-for-changes-to-international-rebate",
+          "source_title": "NZFC — Updated Criteria for Changes to International Rebate (19 Dec 2025 announcement)",
+          "source_type": "film_office",
+          "accessed_date": "2026-05-12",
+          "local_path": "data/raw/new_zealand/2026-05-12_nzfc_news_release_2026_changes.html"
         }
       ]
+    }
+  ],
+  "change_log_entries": [
+    {
+      "program_name": "NZSPR International — Live Action Production Rebate (20%)",
+      "field_changed": "atl_cap_notes",
+      "old_value": "Fees and expenses for non-NZ-resident personnel working on the production in New Zealand qualify provided they work on the production for at least 14 days total; cast members are exempt from the 14-day rule. The NZFC 'Criteria document' (Section 3) holds the full per-individual and aggregate caps on non-resident ATL — those caps are not stated on the public overview page captured here and must be confirmed against the Criteria document before being used in a producer-facing estimate.",
+      "new_value": "ATL fully eligible without cap on QNZPE. The cap on above-the-line costs that existed in the pre-2026 Criteria was removed by the 7 November 2025 ministerial reform, effective 1 January 2026 (NZFC news release, 19 December 2025: 'The cap on above-the-line costs will be removed.'). ATL fees and expenses for cast and crew working on the production in New Zealand qualify; non-resident non-cast personnel still need to work on the production for at least 14 days total to count their fees as QNZPE. Productions that started principal photography before 1 January 2026 are assessed under earlier Criteria that included ATL cap provisions — see CRITERIA_FETCH_STATUS.md for the legacy document references.",
+      "changed_date": "2025-11-07",
+      "change_reason": "ATL cap removed by 7 November 2025 ministerial reform; effective 1 January 2026. Source: NZFC news release 'Updated Criteria for Changes to International Rebate' (19 December 2025)."
+    },
+    {
+      "program_name": "NZSPR International — Production Rebate 5% Uplift",
+      "field_changed": "atl_cap_notes",
+      "old_value": "Inherits the parent Live Action Production Rebate's ATL treatment; the 5% Uplift applies to the same QNZPE base.",
+      "new_value": "Inherits the parent Live Action Production Rebate's ATL treatment — ATL fully eligible without cap. The 5% Uplift applies to the same uncapped QNZPE base.",
+      "changed_date": "2025-11-07",
+      "change_reason": "ATL cap removed by 7 November 2025 ministerial reform; effective 1 January 2026. Parent program inheritance is now uncapped. Source: NZFC news release (19 December 2025)."
+    },
+    {
+      "program_name": "NZSPR International — PDV Rebate (20%)",
+      "field_changed": "atl_cap_notes",
+      "old_value": "PDV QNZPE is fees/expenses for personnel working on PDV activity, hire of studio/office space for PDV activity, equipment for PDV activity, and depreciation of assets used for PDV activity. ATL talent (in the live-action sense) is largely orthogonal to PDV activity, but PDV personnel fees do qualify; consult the NZFC Criteria document for non-resident-personnel caps.",
+      "new_value": "ATL fully eligible without cap on QNZPE. The cap on above-the-line costs that existed in the pre-2026 Criteria was removed by the 7 November 2025 ministerial reform, effective 1 January 2026. PDV QNZPE is fees/expenses for PDV personnel, hire of studio/office space for PDV activity, equipment for PDV activity, and depreciation of assets used for PDV activity; for non-resident non-cast PDV personnel the 14-day work threshold applies.",
+      "changed_date": "2025-11-07",
+      "change_reason": "ATL cap removed by 7 November 2025 ministerial reform; applies to the International Rebate as a whole, including PDV. Effective 1 January 2026. Source: NZFC news release (19 December 2025)."
+    },
+    {
+      "program_name": "NZSPR International — PDV Rebate 5% Uplift",
+      "field_changed": "atl_cap_notes",
+      "old_value": "Inherits the parent PDV Rebate's treatment of personnel fees.",
+      "new_value": "Inherits the parent PDV Rebate's treatment of personnel fees — ATL fully eligible without cap.",
+      "changed_date": "2025-11-07",
+      "change_reason": "ATL cap removed by 7 November 2025 ministerial reform; effective 1 January 2026. Parent program inheritance is now uncapped. Source: NZFC news release (19 December 2025)."
     }
   ]
 }

@@ -210,6 +210,20 @@ def validate_file(path: Path, today: date | None = None, export_mode: bool = Fal
         ctx = f"{path.name} :: {j.display_name} :: {prog.program_name}"
         r.extend(_validate_program(prog, ctx, today, expected, export_mode=export_mode))
 
+    # Manual change_log_entries must reference a program that exists in this file.
+    program_names = {p.program_name for p in jf.programs}
+    for entry in jf.change_log_entries:
+        if entry.program_name not in program_names:
+            r.err(
+                f"{path.name}: change_log_entry references unknown program "
+                f"{entry.program_name!r} (no matching program in this file)"
+            )
+        if entry.changed_date > today:
+            r.err(
+                f"{path.name}: change_log_entry for {entry.program_name!r} "
+                f"has changed_date {entry.changed_date} in the future"
+            )
+
     return r
 
 
