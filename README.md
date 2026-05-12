@@ -81,8 +81,11 @@ film-tax-incentives/
 │   ├── scrape/                    # per-jurisdiction fetchers (one module each)
 │   └── parse/                     # per-jurisdiction parsers
 ├── api/
-│   └── query.py                   # (next milestone) query interface for downstream tools
-└── tests/
+│   ├── breakdown.py               # locked RebateEstimate contract
+│   ├── fx.py                      # FX lookup with as-of date and staleness flag
+│   ├── rate_rules.py              # per-program rate-rule params + caveats (table-driven)
+│   └── query.py                   # public API + CLI (estimate, compare, find, list)
+└── tests/                         # pytest suite (run with `pytest tests/`)
 ```
 
 ---
@@ -123,11 +126,41 @@ python -m scripts.validate export    # strict gate: fails on unverified entries
 dump, public API) MUST pass before producing output. It refuses to let
 `model_knowledge_unverified` entries leak to producers.
 
-### Query (next milestone)
+### Query
 
-The query interface (`api/query.py`) is the next planned milestone. It will
-expose both a Python API (`find_programs`, `compare_programs`, `estimate_rebate`,
-etc.) and a CLI (`python -m api.query list --country "Australia"`).
+The query interface lives at `api/query.py` and offers both a Python API
+and a CLI.
+
+```bash
+python -m api.query list --country "United Kingdom"
+python -m api.query show 5
+python -m api.query find --atl-eligible --min-rate 30 --country "New Zealand"
+python -m api.query estimate --program 5 --spend 40000000 --fx-target USD
+python -m api.query compare 5 6 1 2 --spend 40000000 --full
+```
+
+Every estimate returns a structured `RebateEstimate` (see `api/breakdown.py`)
+with the program identification, raw inputs, gross figure in local
+currency, an optional USD conversion with FX provenance, the rate-rule
+pattern used (`flat`, `capped_base`, or `stacking`), an ordered worked
+solution in `steps`, an ordered `caveats` list, and the source URLs for
+the program. The function never returns a number without `caveats`
+populated — the caveats list is the load-bearing place where eligibility
+preconditions, transitional rules, and post-tax interpretation notes go
+that the math cannot reduce to a number.
+
+### Export for downstream consumers
+
+```bash
+python -m scripts.export --format llm-context --out exports/llm_context.md
+python -m scripts.export --format csv     --out exports/programs.csv
+python -m scripts.export --format json    --out exports/programs.json
+```
+
+All three formats run the strict export gate first — they refuse to
+write output if any program is `model_knowledge_unverified` or if a
+verified program's source `local_path` doesn't point to a real file
+under `data/raw/`.
 
 ---
 
@@ -181,15 +214,18 @@ as supplementary sources but cannot stand alone.
 
 Monetary fields (minimum spends, caps, ceilings) are stored in the
 jurisdiction's local currency — **never** converted to USD inside the DB.
-USD or any other cross-currency comparison happens **at query time**, and the
-downstream `estimate_rebate` function (planned for milestone 3) must record:
+USD or any other cross-currency comparison happens **at query time** via
+`api/fx.py`, and `estimate_rebate` always records:
 
 1. The FX rate it used.
 2. The `as_of` date of that rate.
-3. A staleness flag if the rate is older than 24 hours.
+3. A staleness flag set when the rate is older than 24 hours.
 
-A 5% FX swing changes producer decisions, so every cross-currency comparison
-must show its FX provenance the same way it shows its incentive provenance.
+A 5% FX swing changes producer decisions, so every cross-currency
+comparison shows its FX provenance the same way it shows its incentive
+provenance. `api/fx.py` is currently a hand-maintained stub with
+illustrative rates — replace its rates table with a real feed before
+relying on USD figures in binding decisions.
 
 ## Fetch access status
 
