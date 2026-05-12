@@ -48,6 +48,20 @@ class Source(BaseModel):
     source_title: str
     source_type: SourceType
     accessed_date: date
+    # Repo-relative path (POSIX) to the archived artifact, e.g.
+    # "data/raw/united_kingdom/2026-05-12_hmrc_avec_guidance.html". Required
+    # in practice when verification_method is official_source_live or
+    # official_source_archived; enforced by scripts/validate.py.
+    local_path: Optional[str] = None
+
+
+# Verification methods that require a real, on-disk artifact under data/raw/.
+# Used by the export gate in scripts/validate.py to close the "flipped the
+# field without doing the work" loophole.
+VERIFIED_REQUIRES_ARTIFACT: frozenset[str] = frozenset({
+    "official_source_live",
+    "official_source_archived",
+})
 
 
 class IncentiveProgram(BaseModel):

@@ -133,10 +133,19 @@ etc.) and a CLI (`python -m api.query list --country "Australia"`).
 3. **Produce a `data/processed/{slug}.json` file.** Follow the Pydantic model
    in `scripts/models.py`. Set unknown fields to `null` and explain in the
    `notes` field; never guess.
-4. **Run `python -m scripts.validate files`** and fix every error.
-5. **Run `python -m scripts.load`** to rebuild the database.
-6. **Log material changes in the `change_log` table** when updating an existing
-   program (rate changes, sunset extensions, etc.).
+4. **Reference the archived artifact.** When you set `verification_method` to
+   `official_source_live` or `official_source_archived`, at least one entry
+   in `sources` must include a `local_path` field pointing at the saved file
+   under `data/raw/`. The validator hard-fails if the file doesn't exist —
+   you can't claim verification without leaving the artifact behind.
+5. **Run `python -m scripts.validate files`** and fix every error.
+6. **Run `python -m scripts.load`** to rebuild the database. Material changes
+   to tracked fields (`headline_rate_pct`, `incentive_type`,
+   `verification_method`, `last_verified_date`, `atl_eligible`,
+   `minimum_spend`, `cap_per_project`, `annual_program_cap`,
+   `qualifying_budget_ceiling`, `sunset_date`) are automatically recorded in
+   `change_log` by diffing against the previous DB state. Older `change_log`
+   entries survive the rebuild.
 
 ### What counts as a valid source
 

@@ -82,6 +82,7 @@ CREATE TABLE IF NOT EXISTS sources (
                                 'legal_summary'
                             )),
     accessed_date           TEXT NOT NULL,                   -- ISO 8601 date
+    local_path              TEXT,                            -- repo-relative path to the archived artifact under data/raw/, nullable
     created_at              TEXT NOT NULL DEFAULT (datetime('now'))
 );
 

@@ -29,10 +29,11 @@ from pathlib import Path
 import click
 from pydantic import ValidationError
 
-from scripts.models import UNSAFE_FOR_EXPORT, JurisdictionFile
+from scripts.models import UNSAFE_FOR_EXPORT, VERIFIED_REQUIRES_ARTIFACT, JurisdictionFile
 
 ROOT = Path(__file__).resolve().parent.parent
 PROCESSED_DIR = ROOT / "data" / "processed"
+RAW_DIR = ROOT / "data" / "raw"
 DB_PATH = ROOT / "data" / "incentives.db"
 
 VERIFY_WARN_DAYS = 180
@@ -103,6 +104,42 @@ def _validate_program(
             r.err(msg)
         else:
             r.warn(msg)
+
+    # Archive-file existence gate: programs claiming to be verified against a
+    # live or archived official source MUST have at least one source whose
+    # local_path points to an actual file under data/raw/. Closes the loophole
+    # where verification_method is flipped without the parsing work being done.
+    # This is a hard error in both dev and export modes — a wrong claim is
+    # never acceptable.
+    if program.verification_method in VERIFIED_REQUIRES_ARTIFACT:
+        backed = False
+        for s in program.sources:
+            if not s.local_path:
+                continue
+            p = (ROOT / s.local_path).resolve()
+            try:
+                p.relative_to(RAW_DIR.resolve())
+            except ValueError:
+                r.err(
+                    f"{ctx}: source local_path {s.local_path!r} is not under data/raw/"
+                )
+                continue
+            if not p.exists():
+                r.err(
+                    f"{ctx}: source local_path {s.local_path!r} does not point to an "
+                    "existing file"
+                )
+                continue
+            if not p.is_file():
+                r.err(f"{ctx}: source local_path {s.local_path!r} is not a regular file")
+                continue
+            backed = True
+        if not backed:
+            r.err(
+                f"{ctx}: verification_method={program.verification_method!r} requires at "
+                "least one source with local_path referencing an existing file under "
+                "data/raw/"
+            )
 
     # Qualifying budget ceiling co-presence with its notes (model enforces in load too).
     if program.qualifying_budget_ceiling is not None and not program.qualifying_budget_ceiling_notes:
@@ -283,6 +320,41 @@ def validate_db(db_path: Path = DB_PATH, export_mode: bool = False) -> Report:
                 r.err(msg)
             else:
                 r.warn(msg)
+
+    # Archive-file existence gate at DB level (hard error in any mode).
+    raw_resolved = RAW_DIR.resolve()
+    rows = cur.execute(
+        """
+        SELECT p.id, p.program_name, p.verification_method
+        FROM incentive_programs p
+        WHERE p.verification_method IN ('official_source_live', 'official_source_archived')
+        """
+    ).fetchall()
+    for pid, name, vm in rows:
+        src_paths = [
+            row[0] for row in cur.execute(
+                "SELECT local_path FROM sources WHERE incentive_program_id = ?",
+                (pid,),
+            ).fetchall()
+            if row[0]
+        ]
+        backed = False
+        for sp in src_paths:
+            p = (ROOT / sp).resolve()
+            try:
+                p.relative_to(raw_resolved)
+            except ValueError:
+                r.err(f"program {pid} ({name}): source local_path {sp!r} not under data/raw/")
+                continue
+            if not p.is_file():
+                r.err(f"program {pid} ({name}): source local_path {sp!r} not an existing file")
+                continue
+            backed = True
+        if not backed:
+            r.err(
+                f"program {pid} ({name}): verification_method={vm!r} requires at least "
+                "one source with local_path referencing an existing file under data/raw/"
+            )
 
     con.close()
     return r
