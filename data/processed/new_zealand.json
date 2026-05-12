@@ -24,7 +24,10 @@
       "payment_timing": "Cash rebate paid after the NZFC accepts the final application and audited QNZPE statement. Typical timeline is several months from final submission; verify current processing time with NZFC.",
       "sunset_date": null,
       "last_verified_date": "2026-05-12",
-      "notes": "SEED ENTRY — compiled from program knowledge during initial database build; live re-verification against nzfilm.co.nz scheme rules is required before any production budgeting use. Key fields to verify on re-check: (a) current baseline rate (the scheme has been subject to review and rate adjustments); (b) current Uplift criteria and percentage; (c) exact per-format minimum QNZPE thresholds; (d) any per-applicant annual aggregate cap; (e) current non-resident ATL caps. There is a separate NZSPR-Domestic (Premium) scheme for productions with significant NZ creative content — out of scope for this entry, add as a separate program.",
+      "verification_method": "model_knowledge_unverified",
+      "qualifying_budget_ceiling": null,
+      "qualifying_budget_ceiling_notes": null,
+      "notes": "Live re-verification against nzfilm.co.nz scheme rules required before downstream consumption. Key fields to verify on re-check: (a) current baseline rate (the scheme has been subject to review and rate adjustments); (b) current Uplift criteria and percentage; (c) exact per-format minimum QNZPE thresholds; (d) any per-applicant annual aggregate cap; (e) current non-resident ATL caps. There is a separate NZSPR-Domestic (Premium) scheme for productions with significant NZ creative content — out of scope for this entry, add as a separate program.",
       "sources": [
         {
           "url": "https://www.nzfilm.co.nz/incentives/new-zealand-screen-production-rebate-international",

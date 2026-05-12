@@ -29,7 +29,7 @@ from pathlib import Path
 import click
 from pydantic import ValidationError
 
-from scripts.models import JurisdictionFile
+from scripts.models import UNSAFE_FOR_EXPORT, JurisdictionFile
 
 ROOT = Path(__file__).resolve().parent.parent
 PROCESSED_DIR = ROOT / "data" / "processed"
@@ -80,12 +80,33 @@ class Report:
         self.warnings.extend(other.warnings)
 
 
-def _validate_program(program, ctx: str, today: date, expected_currency: str | None) -> Report:
+def _validate_program(
+    program,
+    ctx: str,
+    today: date,
+    expected_currency: str | None,
+    export_mode: bool = False,
+) -> Report:
     r = Report()
 
     # Source: at least one official_government or film_office
     if not any(s.source_type in ("official_government", "film_office") for s in program.sources):
         r.err(f"{ctx}: no official_government or film_office source")
+
+    # Verification method gate: unverified entries warn in dev, hard-fail on export.
+    if program.verification_method in UNSAFE_FOR_EXPORT:
+        msg = (
+            f"{ctx}: verification_method={program.verification_method!r} — not safe "
+            "for downstream consumption"
+        )
+        if export_mode:
+            r.err(msg)
+        else:
+            r.warn(msg)
+
+    # Qualifying budget ceiling co-presence with its notes (model enforces in load too).
+    if program.qualifying_budget_ceiling is not None and not program.qualifying_budget_ceiling_notes:
+        r.err(f"{ctx}: qualifying_budget_ceiling set but qualifying_budget_ceiling_notes missing")
 
     # last_verified_date freshness
     age = (today - program.last_verified_date).days
@@ -124,7 +145,7 @@ def _validate_program(program, ctx: str, today: date, expected_currency: str | N
     return r
 
 
-def validate_file(path: Path, today: date | None = None) -> Report:
+def validate_file(path: Path, today: date | None = None, export_mode: bool = False) -> Report:
     today = today or date.today()
     r = Report()
 
@@ -150,23 +171,23 @@ def validate_file(path: Path, today: date | None = None) -> Report:
 
     for prog in jf.programs:
         ctx = f"{path.name} :: {j.display_name} :: {prog.program_name}"
-        r.extend(_validate_program(prog, ctx, today, expected))
+        r.extend(_validate_program(prog, ctx, today, expected, export_mode=export_mode))
 
     return r
 
 
-def validate_all_files(today: date | None = None) -> Report:
+def validate_all_files(today: date | None = None, export_mode: bool = False) -> Report:
     r = Report()
     files = sorted(PROCESSED_DIR.glob("*.json"))
     if not files:
         r.warn(f"No processed files found in {PROCESSED_DIR}")
         return r
     for f in files:
-        r.extend(validate_file(f, today=today))
+        r.extend(validate_file(f, today=today, export_mode=export_mode))
     return r
 
 
-def validate_db(db_path: Path = DB_PATH) -> Report:
+def validate_db(db_path: Path = DB_PATH, export_mode: bool = False) -> Report:
     r = Report()
     if not db_path.exists():
         r.err(f"Database not found at {db_path}")
@@ -251,6 +272,18 @@ def validate_db(db_path: Path = DB_PATH) -> Report:
         elif age > VERIFY_WARN_DAYS:
             r.warn(f"program {pid} ({name}): last_verified_date {age} days old")
 
+    # Export gate: unverified entries are fine in dev but must not leak downstream.
+    rows = cur.execute(
+        "SELECT id, program_name, verification_method FROM incentive_programs"
+    ).fetchall()
+    for pid, name, vm in rows:
+        if vm in UNSAFE_FOR_EXPORT:
+            msg = f"program {pid} ({name}): verification_method={vm!r} — not safe for export"
+            if export_mode:
+                r.err(msg)
+            else:
+                r.warn(msg)
+
     con.close()
     return r
 
@@ -290,6 +323,20 @@ def all_():
     """Validate files, then database."""
     r = validate_all_files()
     r.extend(validate_db())
+    _print_report(r)
+    sys.exit(0 if r.ok else 1)
+
+
+@cli.command()
+def export():
+    """Strict validation gate for export to downstream consumers.
+
+    Fails on any program with verification_method='model_knowledge_unverified',
+    plus every standard error. Any export script (LLM context, JSON/CSV dump,
+    public API) MUST pass this gate before producing output.
+    """
+    r = validate_all_files(export_mode=True)
+    r.extend(validate_db(export_mode=True))
     _print_report(r)
     sys.exit(0 if r.ok else 1)
 

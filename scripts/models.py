@@ -29,6 +29,17 @@ SourceType = Literal[
     "legal_summary",
 ]
 
+VerificationMethod = Literal[
+    "official_source_live",          # fetched and parsed from the canonical URL
+    "official_source_archived",      # saved PDF or Wayback snapshot of an official source
+    "secondary_source",              # industry publication, legal summary, etc.
+    "model_knowledge_unverified",    # compiled from research without live source confirmation
+]
+
+# Verification methods that are NOT safe to expose to downstream consumers.
+# The export gate in scripts/validate.py blocks programs with these values.
+UNSAFE_FOR_EXPORT: frozenset[str] = frozenset({"model_knowledge_unverified"})
+
 
 class Source(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -58,6 +69,9 @@ class IncentiveProgram(BaseModel):
     payment_timing: Optional[str] = None
     sunset_date: Optional[date] = None
     last_verified_date: date
+    verification_method: VerificationMethod
+    qualifying_budget_ceiling: Optional[float] = Field(default=None, ge=0)
+    qualifying_budget_ceiling_notes: Optional[str] = None
     notes: Optional[str] = None
     sources: list[Source] = Field(min_length=1)
 

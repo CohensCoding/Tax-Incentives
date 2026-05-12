@@ -65,8 +65,9 @@ def _insert_program(cur: sqlite3.Cursor, jurisdiction_id: int, p: IncentiveProgr
             rate_details, minimum_spend, minimum_spend_notes, cap_per_project,
             annual_program_cap, atl_eligible, atl_cap_notes,
             qualifying_spend_summary, non_qualifying_spend, application_process,
-            payment_timing, sunset_date, last_verified_date, notes
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            payment_timing, sunset_date, last_verified_date, verification_method,
+            qualifying_budget_ceiling, qualifying_budget_ceiling_notes, notes
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             jurisdiction_id,
@@ -86,6 +87,9 @@ def _insert_program(cur: sqlite3.Cursor, jurisdiction_id: int, p: IncentiveProgr
             p.payment_timing,
             p.sunset_date.isoformat() if p.sunset_date else None,
             p.last_verified_date.isoformat(),
+            p.verification_method,
+            p.qualifying_budget_ceiling,
+            p.qualifying_budget_ceiling_notes,
             p.notes,
         ),
     )

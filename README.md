@@ -25,22 +25,28 @@ against current official sources and consulting a qualified production
 accountant in the target jurisdiction. Every program entry links back to its
 official source — use those links.
 
-The current Tier-1 seed entries (UK and New Zealand) were compiled during the
-initial build of the database and explicitly flagged as `SEED ENTRY` in their
-`notes` field. They require live re-verification against the cited sources
-before being used in a production budget.
+Every program entry carries a structured `verification_method` field
+(`official_source_live`, `official_source_archived`, `secondary_source`,
+`model_knowledge_unverified`). The export gate
+(`python -m scripts.validate export`) hard-fails on any program that has not
+been verified against a live or archived official source. Downstream
+consumers (the budgeting AI, LLM exports, public APIs) must run that gate
+before producing output. Unverified entries are allowed inside the DB during
+development; they must not leak out.
 
 ---
 
 ## What's in the database right now
 
-| Jurisdiction   | Program                                              | Headline rate | ATL eligible | Last verified |
-| -------------- | ---------------------------------------------------- | ------------- | ------------ | ------------- |
-| United Kingdom | Audio-Visual Expenditure Credit (AVEC) — Film        | 34%           | Yes          | 2026-05-12*   |
-| United Kingdom | Independent Film Tax Credit (IFTC)                   | 53%           | Yes          | 2026-05-12*   |
-| New Zealand    | NZ Screen Production Rebate — International (NZSPR)  | 20% (+5%)     | Yes (capped) | 2026-05-12*   |
+| Jurisdiction   | Program                                              | Headline rate | ATL eligible | Verification              |
+| -------------- | ---------------------------------------------------- | ------------- | ------------ | ------------------------- |
+| United Kingdom | Audio-Visual Expenditure Credit (AVEC) — Film        | 34%           | Yes          | model_knowledge_unverified |
+| United Kingdom | Independent Film Tax Credit (IFTC)                   | 53%           | Yes          | model_knowledge_unverified |
+| New Zealand    | NZ Screen Production Rebate — International (NZSPR)  | 20% (+5%)     | Yes (capped) | model_knowledge_unverified |
 
-\* Seed entries — see Disclaimer above.
+All three current entries are blocked by the export gate until they are
+re-verified against a live or archived official source. See **Fetch access
+status** below for why.
 
 Full Tier-1 / Tier-2 / Tier-3 jurisdiction roadmap lives in the project brief
 and will be checked off as entries are added.
@@ -97,10 +103,15 @@ refresh the database from source JSON.
 ### Validate without loading
 
 ```bash
-python -m scripts.validate files     # check JSON files
-python -m scripts.validate db        # check loaded DB
+python -m scripts.validate files     # check JSON files (warns on unverified)
+python -m scripts.validate db        # check loaded DB   (warns on unverified)
 python -m scripts.validate all       # both
+python -m scripts.validate export    # strict gate: fails on unverified entries
 ```
+
+`export` is the gate any downstream consumer (LLM context export, JSON/CSV
+dump, public API) MUST pass before producing output. It refuses to let
+`model_knowledge_unverified` entries leak to producers.
 
 ### Query (next milestone)
 
@@ -142,6 +153,55 @@ as supplementary sources but cannot stand alone.
 * **365 days**: the validator hard-fails. Stale data is worse than no data.
 * **On every update**: bump `last_verified_date` only after confirming the
   current source. Don't bump it as a convenience to silence the warning.
+* **Verification method is structured**, not a free-text note. When a program
+  moves from `model_knowledge_unverified` to `official_source_live`, the
+  change is recorded in `change_log` and must be backed by a real, dated
+  source fetch saved under `data/raw/`.
+
+### FX / currency policy
+
+Monetary fields (minimum spends, caps, ceilings) are stored in the
+jurisdiction's local currency — **never** converted to USD inside the DB.
+USD or any other cross-currency comparison happens **at query time**, and the
+downstream `estimate_rebate` function (planned for milestone 3) must record:
+
+1. The FX rate it used.
+2. The `as_of` date of that rate.
+3. A staleness flag if the rate is older than 24 hours.
+
+A 5% FX swing changes producer decisions, so every cross-currency comparison
+must show its FX provenance the same way it shows its incentive provenance.
+
+## Fetch access status
+
+The Tier-1 seed entries (UK AVEC, UK IFTC, NZ NZSPR) currently carry
+`verification_method = "model_knowledge_unverified"` because the canonical
+sources could not be fetched during the initial build:
+
+* `gov.uk`, `bfi.org.uk`, `nzfilm.co.nz`, and the Wayback Machine all
+  returned an identical 21-byte `"Host not in allowlist"` response from the
+  sandbox egress proxy.
+* This is **not** a CDN-level User-Agent block — the proxy refuses the
+  connection regardless of headers, content-API endpoint, or archive
+  fallback. The only confirmed reachable host from the sandbox is PyPI.
+
+Until at least one of UK or NZ is verified end-to-end from a real source, no
+new jurisdictions will be added and the query interface
+(`api/query.py`, `estimate_rebate`) will not be built. The pipeline must be
+proven against a real source before it is scaled.
+
+**Options to unblock**, in rough order of preference:
+
+1. Expand the sandbox egress allowlist to include `gov.uk`, `bfi.org.uk`,
+   `nzfilm.co.nz`, and `web.archive.org`. Then run the per-jurisdiction
+   scrapers under `scripts/scrape/` (to be written).
+2. Run the scraping pipeline in an unrestricted environment and commit the
+   resulting `data/raw/{jurisdiction}/...` files and updated
+   `data/processed/*.json`.
+3. Manually download the canonical PDFs/HTML from the official sites and drop
+   them into `data/raw/{jurisdiction}/{YYYY-MM-DD}_{source_name}.{ext}`. A
+   parser then reads from `data/raw/` only, no network required, and flips
+   the entry to `verification_method = "official_source_archived"`.
 
 ---
 

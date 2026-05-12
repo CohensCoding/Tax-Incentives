@@ -43,6 +43,14 @@ CREATE TABLE IF NOT EXISTS incentive_programs (
     payment_timing              TEXT,
     sunset_date                 TEXT,                       -- ISO 8601 date, nullable
     last_verified_date          TEXT NOT NULL,              -- ISO 8601 date
+    verification_method         TEXT NOT NULL CHECK (verification_method IN (
+                                    'official_source_live',
+                                    'official_source_archived',
+                                    'secondary_source',
+                                    'model_knowledge_unverified'
+                                )),
+    qualifying_budget_ceiling   REAL,                       -- in jurisdiction currency; total production budget above which the program does NOT apply (distinct from cap_per_project, which caps the credit amount)
+    qualifying_budget_ceiling_notes TEXT,
     notes                       TEXT,
     created_at                  TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at                  TEXT NOT NULL DEFAULT (datetime('now')),
@@ -50,8 +58,13 @@ CREATE TABLE IF NOT EXISTS incentive_programs (
     UNIQUE (jurisdiction_id, program_name),
 
     -- If minimum_spend is set, minimum_spend_notes must be set too.
-    CHECK (minimum_spend IS NULL OR minimum_spend_notes IS NOT NULL)
+    CHECK (minimum_spend IS NULL OR minimum_spend_notes IS NOT NULL),
+
+    -- Same co-presence rule for the qualifying budget ceiling.
+    CHECK (qualifying_budget_ceiling IS NULL OR qualifying_budget_ceiling_notes IS NOT NULL)
 );
+
+CREATE INDEX IF NOT EXISTS idx_programs_verification ON incentive_programs(verification_method);
 
 CREATE INDEX IF NOT EXISTS idx_programs_jurisdiction ON incentive_programs(jurisdiction_id);
 CREATE INDEX IF NOT EXISTS idx_programs_atl ON incentive_programs(atl_eligible);
