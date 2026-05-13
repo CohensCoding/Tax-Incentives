@@ -25,7 +25,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Literal, Optional
 
-import click
+# NOTE: `click` is intentionally NOT imported at module top level. It is
+# imported lazily inside `_cli()` below so consumers using only the Python
+# API surface (estimate_rebate, get_program, find_programs, ...) can
+# `from api.query import ...` without click installed. The CLI dispatch
+# path still requires click; importing it inside `_cli()` makes that
+# dependency explicit and confined.
 
 from . import fx, rate_rules
 from .breakdown import (
@@ -779,7 +784,9 @@ def compare_programs(
                 fx_target=fx_target, db_path=db_path,
             ))
         except (ProgramNotFound, NoRateRule) as e:
-            click.echo(click.style(f"  skipped program {pid}: {e}", fg="yellow"), err=True)
+            # Library function — use stdlib stderr so callers without click
+            # installed still get the skip warning.
+            print(f"  skipped program {pid}: {e}", file=sys.stderr)
 
     rows = [
         ComparisonRow(
@@ -803,300 +810,313 @@ def compare_programs(
     )
 
 
-# ─── CLI ────────────────────────────────────────────────────────────────
+# ─── CLI (deferred so library imports don't require click) ─────────────
+#
+# Everything click-related — decorators, click.echo helpers, click.option
+# annotations, click.BadParameter / click.ClickException — lives inside
+# `_cli()`. The function imports click on its first call and returns the
+# Click `cli` group, fully wired. Library imports of api.query do not
+# trigger this function, so consumers without click installed can use
+# the Python API freely.
 
-def _render_money(amount: float, currency: str) -> str:
-    return f"{currency} {amount:,.2f}"
+def _cli():
+    """Build and return the Click CLI group.
 
-
-@click.group()
-def cli():
-    """Query the incentives database."""
-
-
-@cli.command(name="list")
-@click.option("--country", default=None, help="Filter by country (exact match).")
-def list_cmd(country: Optional[str]):
-    """List jurisdictions, optionally filtered by country."""
-    for j in list_jurisdictions(country=country):
-        click.echo(f"  {j.id:>3}  {j.display_name}  ({j.currency})")
-
-
-@cli.command()
-@click.argument("program_id", type=int)
-def show(program_id: int):
-    """Show a single program's full record."""
-    try:
-        p = get_program(program_id)
-    except ProgramNotFound as e:
-        raise click.ClickException(str(e))
-    click.echo(f"#{p.id}  {p.program_name}")
-    click.echo(f"  jurisdiction:        {p.jurisdiction_display}  ({p.currency})")
-    click.echo(f"  type:                {p.incentive_type}")
-    click.echo(f"  headline rate:       {p.headline_rate_pct}%")
-    click.echo(f"  atl eligible:        {p.atl_eligible}")
-    click.echo(f"  minimum spend:       {p.minimum_spend}")
-    click.echo(f"  budget ceiling:      {p.qualifying_budget_ceiling}")
-    click.echo(f"  verification:        {p.verification_method}")
-    click.echo(f"  last verified:       {p.last_verified_date}")
-    click.echo(f"  sources:")
-    for u in p.source_urls:
-        click.echo(f"    - {u}")
-
-
-def _parse_spend_currency_args(args: tuple[str, ...]) -> dict[str, float]:
-    """Parse repeated --spend-currency CCY=AMOUNT flags into a dict."""
-    out: dict[str, float] = {}
-    for raw in args:
-        if "=" not in raw:
-            raise click.BadParameter(
-                f"--spend-currency expects CCY=AMOUNT, got {raw!r}"
-            )
-        ccy, amt = raw.split("=", 1)
-        try:
-            out[ccy.strip().upper()] = float(amt)
-        except ValueError as e:
-            raise click.BadParameter(
-                f"--spend-currency amount for {ccy!r} must be a number: {amt!r}"
-            ) from e
-    return out
-
-
-@cli.command()
-@click.option("--program", "program_id", type=int, required=True)
-@click.option("--spend", "qualifying_spend", type=float, default=None,
-              help="Qualifying spend in program-local currency.")
-@click.option("--spend-currency", "spend_currency_args", multiple=True,
-              help="Mixed-currency qualifying-spend component: CCY=AMOUNT. "
-                   "Repeatable. Mutually exclusive with --spend.")
-@click.option("--atl-spend", "atl_spend", type=float, default=0.0)
-@click.option("--fx-target", default="USD", help="Cross-currency conversion target.")
-@click.option("--monetization-discount", "monetization_discount_pct", type=float,
-              default=None,
-              help="Monetization discount as a percentage (e.g., 3 for 3%).")
-@click.option("--filing-fees", "filing_fees_amount", type=float, default=None,
-              help="Filing/audit fees amount.")
-@click.option("--filing-fees-currency", default=None,
-              help="Currency for --filing-fees (default: program currency).")
-@click.option("--producer-view", "producer_view_flag", is_flag=True, default=False,
-              help="Output the top-sheet producer summary; engineering view is default.")
-def estimate(
-    program_id: int,
-    qualifying_spend: Optional[float],
-    spend_currency_args: tuple[str, ...],
-    atl_spend: float,
-    fx_target: str,
-    monetization_discount_pct: Optional[float],
-    filing_fees_amount: Optional[float],
-    filing_fees_currency: Optional[str],
-    producer_view_flag: bool,
-):
-    """Estimate the rebate / credit for one program and show the breakdown."""
-    by_currency: Optional[dict[str, float]] = (
-        _parse_spend_currency_args(spend_currency_args) if spend_currency_args else None
-    )
-    fees: Optional[Money] = None
-    if filing_fees_amount is not None:
-        # Default fees currency to program currency if not specified.
-        if filing_fees_currency is None:
-            try:
-                prog_currency = get_program(program_id).currency
-            except ProgramNotFound as e:
-                raise click.ClickException(str(e))
-            filing_fees_currency = prog_currency
-        fees = Money(amount=filing_fees_amount, currency=filing_fees_currency.upper())
-
-    try:
-        est = estimate_rebate(
-            program_id,
-            qualifying_spend=qualifying_spend,
-            atl_spend=atl_spend,
-            qualifying_spend_by_currency=by_currency,
-            monetization_discount_pct=monetization_discount_pct,
-            filing_fees=fees,
-            output_view="producer" if producer_view_flag else "engineering",
-            fx_target=fx_target,
-        )
-    except (ProgramNotFound, NoRateRule, ValueError) as e:
-        raise click.ClickException(str(e))
-
-    if producer_view_flag and est.producer_summary is not None:
-        _print_producer_summary(est)
-    else:
-        _print_estimate(est)
-
-
-def _print_producer_summary(est: RebateEstimate) -> None:
-    """Render a single estimate's producer-view summary."""
-    ps = est.producer_summary
-    if ps is None:
-        # Defensive: caller should only invoke this when summary is present.
-        _print_estimate(est)
-        return
-    click.echo(ps.top_sheet_line)
-    click.echo(f"  gross rebate:   {ps.gross_rebate.currency} {ps.gross_rebate.amount:,.2f}")
-    if abs(ps.cash_today.amount - ps.gross_rebate.amount) > 0.01:
-        click.echo(f"  cash today:     {ps.cash_today.currency} {ps.cash_today.amount:,.2f}")
-    click.echo(f"  headline caveat: {ps.headline_caveat}")
-    click.echo(f"  ({ps.engineering_view_ref})")
-
-
-def _print_estimate(est: RebateEstimate) -> None:
-    click.echo(f"#{est.program_id}  {est.program_name}  [{est.jurisdiction_display}]")
-    click.echo(f"  rule_applied:   {est.rule_applied}")
-    click.echo(f"  gross_estimate: {_render_money(est.gross_estimate, est.currency)}")
-    if est.cash_today is not None:
-        click.echo(f"  cash_today:     {_render_money(est.cash_today, est.currency)}")
-    if est.estimate_usd is not None and est.fx is not None:
-        stale = " (STALE)" if est.fx.fx_stale else ""
-        click.echo(
-            f"  estimate_usd:   USD {est.estimate_usd:,.2f}"
-            f"  @ {est.fx.fx_rate:.6f}  as_of={est.fx.fx_as_of}{stale}"
-        )
-    click.echo("  steps:")
-    for s in est.steps:
-        if s.value is None:
-            click.echo(f"    - {s.description}")
-        else:
-            click.echo(f"    - {s.description}: {s.value:,.4f}")
-    click.echo("  caveats:")
-    for c in est.caveats:
-        click.echo(f"    - {c}")
-    click.echo("  sources:")
-    for pid, urls in est.sources.items():
-        for u in urls:
-            click.echo(f"    - [{pid}] {u}")
-
-
-@cli.command()
-@click.argument("program_ids", nargs=-1, type=int, required=True)
-@click.option("--spend", "qualifying_spend", type=float, required=True)
-@click.option("--atl-spend", "atl_spend", type=float, default=0.0)
-@click.option("--fx-target", default="USD")
-@click.option("--monetization-discount", "monetization_discount_pct", type=float,
-              default=None,
-              help="Monetization discount as a percentage; applied to every program.")
-@click.option("--filing-fees", "filing_fees_amount", type=float, default=None,
-              help="Filing/audit fees applied to every program (display currency).")
-@click.option("--filing-fees-currency", default=None,
-              help="Currency for --filing-fees (default: --fx-target).")
-@click.option("--full", is_flag=True,
-              help="Output the full engineering breakdown. Default is the "
-                   "producer-view top-sheet summary table.")
-def compare(
-    program_ids: tuple[int, ...],
-    qualifying_spend: float,
-    atl_spend: float,
-    fx_target: str,
-    monetization_discount_pct: Optional[float],
-    filing_fees_amount: Optional[float],
-    filing_fees_currency: Optional[str],
-    full: bool,
-):
-    """Compare estimates across multiple programs at the same qualifying_spend.
-
-    Default output is the producer-view summary (one top-sheet line per
-    program plus headline caveats). Pass --full to get the engineering
-    breakdown per program.
+    Imports click lazily and defines all CLI commands inside this
+    function. Decorators only execute when `_cli()` is invoked (from
+    `python -m api.query` via the `__main__` block below). This keeps
+    the module's library surface independent of click.
     """
-    fees: Optional[Money] = None
-    if filing_fees_amount is not None:
-        # For compare, the same Money is applied to every program, so its
-        # currency must be supplied explicitly. Default to fx_target.
-        fees = Money(
-            amount=filing_fees_amount,
-            currency=(filing_fees_currency or fx_target).upper(),
-        )
+    import click
 
-    # Build each estimate with the appropriate view.
-    view: Literal["engineering", "producer"] = "engineering" if full else "producer"
-    estimates: list[RebateEstimate] = []
-    for pid in program_ids:
+    def _render_money(amount: float, currency: str) -> str:
+        return f"{currency} {amount:,.2f}"
+
+    def _parse_spend_currency_args(args: tuple[str, ...]) -> dict[str, float]:
+        """Parse repeated --spend-currency CCY=AMOUNT flags into a dict."""
+        out: dict[str, float] = {}
+        for raw in args:
+            if "=" not in raw:
+                raise click.BadParameter(
+                    f"--spend-currency expects CCY=AMOUNT, got {raw!r}"
+                )
+            ccy, amt = raw.split("=", 1)
+            try:
+                out[ccy.strip().upper()] = float(amt)
+            except ValueError as e:
+                raise click.BadParameter(
+                    f"--spend-currency amount for {ccy!r} must be a number: {amt!r}"
+                ) from e
+        return out
+
+    def _print_producer_summary(est: RebateEstimate) -> None:
+        """Render a single estimate's producer-view summary."""
+        ps = est.producer_summary
+        if ps is None:
+            # Defensive: caller should only invoke this when summary is present.
+            _print_estimate(est)
+            return
+        click.echo(ps.top_sheet_line)
+        click.echo(f"  gross rebate:   {ps.gross_rebate.currency} {ps.gross_rebate.amount:,.2f}")
+        if abs(ps.cash_today.amount - ps.gross_rebate.amount) > 0.01:
+            click.echo(f"  cash today:     {ps.cash_today.currency} {ps.cash_today.amount:,.2f}")
+        click.echo(f"  headline caveat: {ps.headline_caveat}")
+        click.echo(f"  ({ps.engineering_view_ref})")
+
+    def _print_estimate(est: RebateEstimate) -> None:
+        click.echo(f"#{est.program_id}  {est.program_name}  [{est.jurisdiction_display}]")
+        click.echo(f"  rule_applied:   {est.rule_applied}")
+        click.echo(f"  gross_estimate: {_render_money(est.gross_estimate, est.currency)}")
+        if est.cash_today is not None:
+            click.echo(f"  cash_today:     {_render_money(est.cash_today, est.currency)}")
+        if est.estimate_usd is not None and est.fx is not None:
+            stale = " (STALE)" if est.fx.fx_stale else ""
+            click.echo(
+                f"  estimate_usd:   USD {est.estimate_usd:,.2f}"
+                f"  @ {est.fx.fx_rate:.6f}  as_of={est.fx.fx_as_of}{stale}"
+            )
+        click.echo("  steps:")
+        for s in est.steps:
+            if s.value is None:
+                click.echo(f"    - {s.description}")
+            else:
+                click.echo(f"    - {s.description}: {s.value:,.4f}")
+        click.echo("  caveats:")
+        for c in est.caveats:
+            click.echo(f"    - {c}")
+        click.echo("  sources:")
+        for pid, urls in est.sources.items():
+            for u in urls:
+                click.echo(f"    - [{pid}] {u}")
+
+    @click.group()
+    def cli():
+        """Query the incentives database."""
+
+    @cli.command(name="list")
+    @click.option("--country", default=None, help="Filter by country (exact match).")
+    def list_cmd(country: Optional[str]):
+        """List jurisdictions, optionally filtered by country."""
+        for j in list_jurisdictions(country=country):
+            click.echo(f"  {j.id:>3}  {j.display_name}  ({j.currency})")
+
+    @cli.command()
+    @click.argument("program_id", type=int)
+    def show(program_id: int):
+        """Show a single program's full record."""
         try:
-            estimates.append(estimate_rebate(
-                pid,
+            p = get_program(program_id)
+        except ProgramNotFound as e:
+            raise click.ClickException(str(e))
+        click.echo(f"#{p.id}  {p.program_name}")
+        click.echo(f"  jurisdiction:        {p.jurisdiction_display}  ({p.currency})")
+        click.echo(f"  type:                {p.incentive_type}")
+        click.echo(f"  headline rate:       {p.headline_rate_pct}%")
+        click.echo(f"  atl eligible:        {p.atl_eligible}")
+        click.echo(f"  minimum spend:       {p.minimum_spend}")
+        click.echo(f"  budget ceiling:      {p.qualifying_budget_ceiling}")
+        click.echo(f"  verification:        {p.verification_method}")
+        click.echo(f"  last verified:       {p.last_verified_date}")
+        click.echo(f"  sources:")
+        for u in p.source_urls:
+            click.echo(f"    - {u}")
+
+    @cli.command()
+    @click.option("--program", "program_id", type=int, required=True)
+    @click.option("--spend", "qualifying_spend", type=float, default=None,
+                  help="Qualifying spend in program-local currency.")
+    @click.option("--spend-currency", "spend_currency_args", multiple=True,
+                  help="Mixed-currency qualifying-spend component: CCY=AMOUNT. "
+                       "Repeatable. Mutually exclusive with --spend.")
+    @click.option("--atl-spend", "atl_spend", type=float, default=0.0)
+    @click.option("--fx-target", default="USD", help="Cross-currency conversion target.")
+    @click.option("--monetization-discount", "monetization_discount_pct", type=float,
+                  default=None,
+                  help="Monetization discount as a percentage (e.g., 3 for 3%).")
+    @click.option("--filing-fees", "filing_fees_amount", type=float, default=None,
+                  help="Filing/audit fees amount.")
+    @click.option("--filing-fees-currency", default=None,
+                  help="Currency for --filing-fees (default: program currency).")
+    @click.option("--producer-view", "producer_view_flag", is_flag=True, default=False,
+                  help="Output the top-sheet producer summary; engineering view is default.")
+    def estimate(
+        program_id: int,
+        qualifying_spend: Optional[float],
+        spend_currency_args: tuple[str, ...],
+        atl_spend: float,
+        fx_target: str,
+        monetization_discount_pct: Optional[float],
+        filing_fees_amount: Optional[float],
+        filing_fees_currency: Optional[str],
+        producer_view_flag: bool,
+    ):
+        """Estimate the rebate / credit for one program and show the breakdown."""
+        by_currency: Optional[dict[str, float]] = (
+            _parse_spend_currency_args(spend_currency_args) if spend_currency_args else None
+        )
+        fees: Optional[Money] = None
+        if filing_fees_amount is not None:
+            # Default fees currency to program currency if not specified.
+            if filing_fees_currency is None:
+                try:
+                    prog_currency = get_program(program_id).currency
+                except ProgramNotFound as e:
+                    raise click.ClickException(str(e))
+                filing_fees_currency = prog_currency
+            fees = Money(amount=filing_fees_amount, currency=filing_fees_currency.upper())
+
+        try:
+            est = estimate_rebate(
+                program_id,
                 qualifying_spend=qualifying_spend,
                 atl_spend=atl_spend,
+                qualifying_spend_by_currency=by_currency,
                 monetization_discount_pct=monetization_discount_pct,
                 filing_fees=fees,
-                output_view=view,
+                output_view="producer" if producer_view_flag else "engineering",
                 fx_target=fx_target,
-            ))
-        except (ProgramNotFound, NoRateRule, ValueError) as e:
-            click.echo(click.style(f"  skipped program {pid}: {e}", fg="yellow"), err=True)
-
-    click.echo(f"Qualifying spend: {qualifying_spend:,.0f} (fx_target={fx_target})")
-    if monetization_discount_pct is not None:
-        click.echo(f"Applied monetization discount: {monetization_discount_pct:g}%")
-    if fees is not None:
-        click.echo(f"Applied filing fees: {fees.currency} {fees.amount:,.2f}")
-    click.echo()
-
-    if not full:
-        # Producer view: top-sheet lines per program, sorted by cash-today USD desc.
-        ranked = sorted(
-            estimates,
-            key=lambda e: (e.estimate_usd or 0.0, e.gross_estimate),
-            reverse=True,
-        )
-        for est in ranked:
-            if est.producer_summary is None:
-                _print_estimate(est)
-                continue
-            ps = est.producer_summary
-            click.echo("  " + ps.top_sheet_line)
-            click.echo(f"      gross:           {ps.gross_rebate.currency} "
-                       f"{ps.gross_rebate.amount:,.2f}")
-            # Only show cash-today as a separate line when it differs from
-            # gross (i.e., discount or fees were applied). Same number twice
-            # is noise.
-            if abs(ps.cash_today.amount - ps.gross_rebate.amount) > 0.01:
-                click.echo(f"      cash today:      {ps.cash_today.currency} "
-                           f"{ps.cash_today.amount:,.2f}")
-            click.echo(f"      headline caveat: {ps.headline_caveat}")
-            click.echo()
-    else:
-        # Engineering view: same compact table the original CLI showed,
-        # followed by full breakdowns per program.
-        ranked = sorted(
-            estimates,
-            key=lambda e: (e.estimate_usd or 0.0, e.gross_estimate),
-            reverse=True,
-        )
-        click.echo(f"{'id':>4}  {'jurisdiction':<16}  {'program':<60}  "
-                   f"{'rule':<12}  {'gross':>18}  {'usd':>14}  {'caveats':>8}")
-        for est in ranked:
-            gross = _render_money(est.gross_estimate, est.currency)
-            usd = f"USD {est.estimate_usd:,.0f}" if est.estimate_usd is not None else "—"
-            click.echo(
-                f"{est.program_id:>4}  {est.jurisdiction_display:<16}  "
-                f"{est.program_name[:60]:<60}  {est.rule_applied:<12}  "
-                f"{gross:>18}  {usd:>14}  {len(est.caveats):>8}"
             )
-        click.echo()
-        for est in ranked:
-            click.echo("─" * 80)
+        except (ProgramNotFound, NoRateRule, ValueError) as e:
+            raise click.ClickException(str(e))
+
+        if producer_view_flag and est.producer_summary is not None:
+            _print_producer_summary(est)
+        else:
             _print_estimate(est)
 
+    @cli.command()
+    @click.argument("program_ids", nargs=-1, type=int, required=True)
+    @click.option("--spend", "qualifying_spend", type=float, required=True)
+    @click.option("--atl-spend", "atl_spend", type=float, default=0.0)
+    @click.option("--fx-target", default="USD")
+    @click.option("--monetization-discount", "monetization_discount_pct", type=float,
+                  default=None,
+                  help="Monetization discount as a percentage; applied to every program.")
+    @click.option("--filing-fees", "filing_fees_amount", type=float, default=None,
+                  help="Filing/audit fees applied to every program (display currency).")
+    @click.option("--filing-fees-currency", default=None,
+                  help="Currency for --filing-fees (default: --fx-target).")
+    @click.option("--full", is_flag=True,
+                  help="Output the full engineering breakdown. Default is the "
+                       "producer-view top-sheet summary table.")
+    def compare(
+        program_ids: tuple[int, ...],
+        qualifying_spend: float,
+        atl_spend: float,
+        fx_target: str,
+        monetization_discount_pct: Optional[float],
+        filing_fees_amount: Optional[float],
+        filing_fees_currency: Optional[str],
+        full: bool,
+    ):
+        """Compare estimates across multiple programs at the same qualifying_spend.
 
-@cli.command()
-@click.option("--atl-eligible/--no-atl", default=None)
-@click.option("--min-rate", "min_rate_pct", type=float, default=None)
-@click.option("--max-min-spend-usd", "max_minimum_spend_usd", type=float, default=None)
-@click.option("--country", default=None)
-def find(atl_eligible: Optional[bool], min_rate_pct: Optional[float],
-         max_minimum_spend_usd: Optional[float], country: Optional[str]):
-    """Filter programs by common producer criteria."""
-    matches = find_programs(
-        atl_eligible=atl_eligible,
-        min_rate_pct=min_rate_pct,
-        max_minimum_spend_usd=max_minimum_spend_usd,
-        country=country,
-    )
-    for p in matches:
-        click.echo(f"  {p.id:>3}  {p.jurisdiction_display:<16}  {p.program_name[:60]:<60}  "
-                   f"{p.headline_rate_pct:>5}%  atl={p.atl_eligible}")
+        Default output is the producer-view summary (one top-sheet line per
+        program plus headline caveats). Pass --full to get the engineering
+        breakdown per program.
+        """
+        fees: Optional[Money] = None
+        if filing_fees_amount is not None:
+            # For compare, the same Money is applied to every program, so its
+            # currency must be supplied explicitly. Default to fx_target.
+            fees = Money(
+                amount=filing_fees_amount,
+                currency=(filing_fees_currency or fx_target).upper(),
+            )
+
+        # Build each estimate with the appropriate view.
+        view: Literal["engineering", "producer"] = "engineering" if full else "producer"
+        estimates: list[RebateEstimate] = []
+        for pid in program_ids:
+            try:
+                estimates.append(estimate_rebate(
+                    pid,
+                    qualifying_spend=qualifying_spend,
+                    atl_spend=atl_spend,
+                    monetization_discount_pct=monetization_discount_pct,
+                    filing_fees=fees,
+                    output_view=view,
+                    fx_target=fx_target,
+                ))
+            except (ProgramNotFound, NoRateRule, ValueError) as e:
+                click.echo(
+                    click.style(f"  skipped program {pid}: {e}", fg="yellow"),
+                    err=True,
+                )
+
+        click.echo(f"Qualifying spend: {qualifying_spend:,.0f} (fx_target={fx_target})")
+        if monetization_discount_pct is not None:
+            click.echo(f"Applied monetization discount: {monetization_discount_pct:g}%")
+        if fees is not None:
+            click.echo(f"Applied filing fees: {fees.currency} {fees.amount:,.2f}")
+        click.echo()
+
+        if not full:
+            # Producer view: top-sheet lines per program, sorted by cash-today USD desc.
+            ranked = sorted(
+                estimates,
+                key=lambda e: (e.estimate_usd or 0.0, e.gross_estimate),
+                reverse=True,
+            )
+            for est in ranked:
+                if est.producer_summary is None:
+                    _print_estimate(est)
+                    continue
+                ps = est.producer_summary
+                click.echo("  " + ps.top_sheet_line)
+                click.echo(f"      gross:           {ps.gross_rebate.currency} "
+                           f"{ps.gross_rebate.amount:,.2f}")
+                # Only show cash-today as a separate line when it differs from
+                # gross (i.e., discount or fees were applied). Same number twice
+                # is noise.
+                if abs(ps.cash_today.amount - ps.gross_rebate.amount) > 0.01:
+                    click.echo(f"      cash today:      {ps.cash_today.currency} "
+                               f"{ps.cash_today.amount:,.2f}")
+                click.echo(f"      headline caveat: {ps.headline_caveat}")
+                click.echo()
+        else:
+            # Engineering view: same compact table the original CLI showed,
+            # followed by full breakdowns per program.
+            ranked = sorted(
+                estimates,
+                key=lambda e: (e.estimate_usd or 0.0, e.gross_estimate),
+                reverse=True,
+            )
+            click.echo(f"{'id':>4}  {'jurisdiction':<16}  {'program':<60}  "
+                       f"{'rule':<12}  {'gross':>18}  {'usd':>14}  {'caveats':>8}")
+            for est in ranked:
+                gross = _render_money(est.gross_estimate, est.currency)
+                usd = f"USD {est.estimate_usd:,.0f}" if est.estimate_usd is not None else "—"
+                click.echo(
+                    f"{est.program_id:>4}  {est.jurisdiction_display:<16}  "
+                    f"{est.program_name[:60]:<60}  {est.rule_applied:<12}  "
+                    f"{gross:>18}  {usd:>14}  {len(est.caveats):>8}"
+                )
+            click.echo()
+            for est in ranked:
+                click.echo("─" * 80)
+                _print_estimate(est)
+
+    @cli.command()
+    @click.option("--atl-eligible/--no-atl", default=None)
+    @click.option("--min-rate", "min_rate_pct", type=float, default=None)
+    @click.option("--max-min-spend-usd", "max_minimum_spend_usd", type=float, default=None)
+    @click.option("--country", default=None)
+    def find(atl_eligible: Optional[bool], min_rate_pct: Optional[float],
+             max_minimum_spend_usd: Optional[float], country: Optional[str]):
+        """Filter programs by common producer criteria."""
+        matches = find_programs(
+            atl_eligible=atl_eligible,
+            min_rate_pct=min_rate_pct,
+            max_minimum_spend_usd=max_minimum_spend_usd,
+            country=country,
+        )
+        for p in matches:
+            click.echo(f"  {p.id:>3}  {p.jurisdiction_display:<16}  {p.program_name[:60]:<60}  "
+                       f"{p.headline_rate_pct:>5}%  atl={p.atl_eligible}")
+
+    return cli
 
 
 if __name__ == "__main__":
-    cli()
+    _cli()()
