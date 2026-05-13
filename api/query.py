@@ -23,12 +23,19 @@ import sqlite3
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Optional
+from typing import Callable, Literal, Optional
 
 import click
 
 from api import fx, rate_rules
-from api.breakdown import EstimateStep, FxInfo, RebateEstimate, RulePattern
+from api.breakdown import (
+    EstimateStep,
+    FxInfo,
+    Money,
+    ProducerSummary,
+    RebateEstimate,
+    RulePattern,
+)
 from api.rate_rules import ProgramKey, RateRule
 
 
@@ -248,29 +255,69 @@ def _to_usd(amount: float, currency: str) -> float:
 
 def estimate_rebate(
     program_id: int,
-    qualifying_spend: float,
+    qualifying_spend: Optional[float] = None,
     atl_spend: float = 0.0,
     *,
+    qualifying_spend_by_currency: Optional[dict[str, float]] = None,
+    monetization_discount_pct: Optional[float] = None,
+    filing_fees: Optional[Money] = None,
+    output_view: Literal["engineering", "producer"] = "engineering",
     fx_target: Optional[str] = None,
     db_path: Path = DEFAULT_DB,
 ) -> RebateEstimate:
     """Compute a gross rebate / credit estimate for one program.
 
-    `qualifying_spend` is in the program's local currency and is assumed
-    to already reflect the program's qualifying-cost definition (the
-    caveats explain what the function did NOT verify).
+    Qualifying spend can be supplied via EITHER path, never both:
 
-    `atl_spend` is reserved for future ATL-cap programs. None of the seven
-    currently-loaded programs apply an ATL-specific cap; the value is
-    echoed back in `inputs` but does not alter the math.
+    * `qualifying_spend` (float, in program-local currency) — the original
+      path. Assumes the caller has pre-aggregated.
 
-    Set `fx_target='USD'` (or any registered currency) to additionally
-    render the estimate in another currency, with FX provenance attached.
+    * `qualifying_spend_by_currency` (dict[str, float]) — mixed-currency
+      qualifying spend, e.g., ``{"USD": 12_000_000, "NZD": 28_000_000}``
+      for a production whose DP is paid in USD and B-camera op is paid
+      in NZD but both work in NZ and qualify under the 'used or consumed'
+      test. Components convert through api.fx to the program's local
+      currency before the rate rule runs; the breakdown records each
+      conversion as a step.
+
+    `atl_spend` is echoed in `inputs` but does not alter the math — none
+    of the currently-loaded programs apply an ATL-specific cap.
+
+    Optional post-rate adjustments (both additive to the breakdown, both
+    factored into `cash_today`):
+
+    * `monetization_discount_pct` — e.g., ``3`` for Cashet's 3% discount
+      to monetize the rebate before it pays out. This is the producer's
+      cash-today value, the number that goes on a budget top sheet.
+
+    * `filing_fees` — a `Money` (amount + currency) covering tax-credit
+      filing and audit fees. Converted to program-local currency at
+      time of estimation and subtracted from the post-discount value.
+
+    Set `fx_target` to additionally render the estimate (gross and
+    cash-today) in another currency, with FX provenance attached.
+
+    `output_view="producer"` adds a `ProducerSummary` to the returned
+    estimate — same math, top-sheet-ready presentation. The engineering
+    view (steps, caveats, sources) is always present regardless.
     """
-    if qualifying_spend < 0:
+    if (qualifying_spend is None) == (qualifying_spend_by_currency is None):
+        raise ValueError(
+            "Pass exactly one of `qualifying_spend` or "
+            "`qualifying_spend_by_currency`."
+        )
+    if qualifying_spend is not None and qualifying_spend < 0:
         raise ValueError("qualifying_spend must be non-negative")
+    if qualifying_spend_by_currency is not None:
+        for ccy, amt in qualifying_spend_by_currency.items():
+            if amt < 0:
+                raise ValueError(
+                    f"qualifying_spend_by_currency[{ccy!r}] must be non-negative"
+                )
     if atl_spend < 0:
         raise ValueError("atl_spend must be non-negative")
+    if monetization_discount_pct is not None and not (0 <= monetization_discount_pct <= 100):
+        raise ValueError("monetization_discount_pct must be in [0, 100]")
 
     program = get_program(program_id, db_path=db_path)
     rule = rate_rules.get_rule(program.jurisdiction_display, program.program_name)
@@ -284,30 +331,245 @@ def estimate_rebate(
     if handler is None:
         raise NoRateRule(f"Unknown rate-rule pattern {rule.pattern!r}")
 
-    estimate = handler(program, rule, qualifying_spend, atl_spend)
+    # ── 1. Resolve qualifying_spend to program-local currency ────────────
+    pre_steps: list[EstimateStep] = []
+    extra_caveats: list[str] = []
+    if qualifying_spend is None:
+        resolved_spend, pre_steps, extra_caveats = _resolve_multi_currency_spend(
+            qualifying_spend_by_currency, program.currency,
+        )
+    else:
+        resolved_spend = qualifying_spend
 
+    # ── 2. Run the rate-rule handler on the resolved spend ───────────────
+    estimate = handler(program, rule, resolved_spend, atl_spend)
+
+    # ── 3. Apply monetization discount and filing fees (post-rate) ───────
+    cash_today = estimate.gross_estimate
+    post_steps: list[EstimateStep] = []
+    if monetization_discount_pct is not None:
+        discount_amt = cash_today * (monetization_discount_pct / 100.0)
+        cash_today -= discount_amt
+        post_steps.append(EstimateStep(
+            description=f"Less {monetization_discount_pct:g}% monetization discount",
+            value=-discount_amt,
+        ))
+    if filing_fees is not None:
+        fees_in_program_ccy = _convert_money_to(filing_fees, program.currency, extra_caveats)
+        cash_today -= fees_in_program_ccy
+        if filing_fees.currency.upper() == program.currency.upper():
+            fees_desc = f"Less filing/audit fees ({program.currency} {filing_fees.amount:,.2f})"
+        else:
+            fees_desc = (
+                f"Less filing/audit fees ({filing_fees.currency} {filing_fees.amount:,.2f}"
+                f" → {program.currency} {fees_in_program_ccy:,.2f})"
+            )
+        post_steps.append(EstimateStep(description=fees_desc, value=-fees_in_program_ccy))
+        if cash_today < 0:
+            extra_caveats.append(
+                "Filing fees exceed the post-discount rebate value — cash-today "
+                "is negative. Verify the fees figure."
+            )
+
+    has_post_adjustments = monetization_discount_pct is not None or filing_fees is not None
+    if has_post_adjustments:
+        post_steps.append(EstimateStep(
+            description="Cash-today (gross less discount less filing fees)",
+            value=cash_today,
+        ))
+
+    # ── 4. Splice pre + rate + post steps; carry over extra caveats ──────
+    updated_steps = pre_steps + estimate.steps + post_steps
+    updated_caveats = estimate.caveats + extra_caveats
+    # Only echo Phase-1 inputs into `inputs` when they were actually used,
+    # so the breakdown shape stays backward-compatible for callers that
+    # don't touch the new parameters.
+    extra_inputs: dict[str, object] = {}
+    if qualifying_spend_by_currency is not None:
+        extra_inputs["qualifying_spend_by_currency"] = qualifying_spend_by_currency
+    if monetization_discount_pct is not None:
+        extra_inputs["monetization_discount_pct"] = monetization_discount_pct
+    if filing_fees is not None:
+        extra_inputs["filing_fees"] = {
+            "amount": filing_fees.amount,
+            "currency": filing_fees.currency,
+        }
+    estimate = estimate.model_copy(update={
+        "steps": updated_steps,
+        "caveats": updated_caveats,
+        "cash_today": cash_today if has_post_adjustments else None,
+        "inputs": {**estimate.inputs, **extra_inputs},
+    })
+
+    # ── 5. fx_target cross-conversion ────────────────────────────────────
     if fx_target and fx_target.upper() != program.currency.upper():
         info = fx.lookup(program.currency, fx_target.upper())
+        gross_in_target = estimate.gross_estimate * info.fx_rate
+        cash_today_in_target = (
+            estimate.cash_today * info.fx_rate if estimate.cash_today is not None else None
+        )
         estimate = estimate.model_copy(update={
-            "estimate_usd": estimate.gross_estimate * info.fx_rate if fx_target.upper() == "USD" else None,
+            "estimate_usd": gross_in_target if fx_target.upper() == "USD" else None,
             "fx": info,
         })
-        # For non-USD targets we don't populate estimate_usd, but the steps
-        # still record the converted figure for transparency.
         if fx_target.upper() != "USD":
-            converted = estimate.gross_estimate * info.fx_rate
             estimate.steps.append(EstimateStep(
-                description=f"Converted to {fx_target.upper()} at {info.fx_rate:.6f} "
-                            f"({program.currency}→{fx_target.upper()}, as of {info.fx_as_of})",
-                value=converted,
+                description=f"Gross converted to {fx_target.upper()} at "
+                            f"{info.fx_rate:.6f} ({program.currency}→{fx_target.upper()}, "
+                            f"as of {info.fx_as_of})",
+                value=gross_in_target,
             ))
+            if cash_today_in_target is not None:
+                estimate.steps.append(EstimateStep(
+                    description=f"Cash-today converted to {fx_target.upper()}",
+                    value=cash_today_in_target,
+                ))
         if info.fx_stale:
             estimate.caveats.append(
                 f"FX rate {program.currency}→{fx_target.upper()} is stale "
                 f"(as of {info.fx_as_of}, threshold 24h). Re-fetch before binding."
             )
 
+    # ── 6. Producer view (additive — engineering view always present) ────
+    if output_view == "producer":
+        summary = _build_producer_summary(
+            program, rule, estimate,
+            monetization_discount_pct=monetization_discount_pct,
+            filing_fees=filing_fees,
+            fx_target=fx_target,
+        )
+        estimate = estimate.model_copy(update={"producer_summary": summary})
+
     return estimate
+
+
+# ─── Multi-currency resolution + Money conversion helpers ───────────────
+
+def _resolve_multi_currency_spend(
+    by_currency: dict[str, float],
+    program_currency: str,
+) -> tuple[float, list[EstimateStep], list[str]]:
+    """Sum a mixed-currency qualifying-spend dict into program-local
+    currency. Returns (total, conversion_steps, extra_caveats)."""
+    program_ccy = program_currency.upper()
+    if not by_currency:
+        raise ValueError("qualifying_spend_by_currency must be non-empty")
+    steps: list[EstimateStep] = []
+    extra_caveats: list[str] = []
+    total = 0.0
+    for raw_ccy, amount in by_currency.items():
+        ccy = raw_ccy.upper()
+        if ccy == program_ccy:
+            total += amount
+            steps.append(EstimateStep(
+                description=f"Qualifying spend component: {ccy} {amount:,.2f} "
+                            f"(no conversion needed — program currency)",
+                value=amount,
+            ))
+            continue
+        info = fx.lookup(ccy, program_ccy)
+        converted = amount * info.fx_rate
+        total += converted
+        steps.append(EstimateStep(
+            description=f"Qualifying spend component: {ccy} {amount:,.2f} → "
+                        f"{program_ccy} {converted:,.2f} at {info.fx_rate:.6f} "
+                        f"(as of {info.fx_as_of})",
+            value=converted,
+        ))
+        if info.fx_stale:
+            extra_caveats.append(
+                f"FX rate {ccy}→{program_ccy} for qualifying-spend conversion "
+                f"is stale (as of {info.fx_as_of}, threshold 24h). Re-fetch "
+                "before binding."
+            )
+    steps.append(EstimateStep(
+        description=f"Total qualifying spend in program currency ({program_ccy})",
+        value=total,
+    ))
+    return total, steps, extra_caveats
+
+
+def _convert_money_to(
+    money: Money,
+    target_currency: str,
+    caveats_accumulator: list[str],
+) -> float:
+    """Convert a Money to target_currency. Records a stale-rate caveat
+    into `caveats_accumulator` when applicable."""
+    src = money.currency.upper()
+    tgt = target_currency.upper()
+    if src == tgt:
+        return money.amount
+    info = fx.lookup(src, tgt)
+    if info.fx_stale:
+        caveats_accumulator.append(
+            f"FX rate {src}→{tgt} for filing-fees conversion is stale "
+            f"(as of {info.fx_as_of}, threshold 24h). Re-fetch before binding."
+        )
+    return money.amount * info.fx_rate
+
+
+# ─── Producer summary ───────────────────────────────────────────────────
+
+def _build_producer_summary(
+    program: IncentiveProgram,
+    rule: RateRule,
+    estimate: RebateEstimate,
+    *,
+    monetization_discount_pct: Optional[float],
+    filing_fees: Optional[Money],
+    fx_target: Optional[str],
+) -> ProducerSummary:
+    label = rule.producer_label or program.program_name
+
+    # Display values: in fx_target if cross-currency was requested AND a
+    # rate is available; otherwise in program currency. This matches how
+    # producers actually paste numbers — the budget is in one currency.
+    if fx_target and fx_target.upper() != program.currency.upper() and estimate.fx is not None:
+        display_currency = fx_target.upper()
+        gross_display = estimate.gross_estimate * estimate.fx.fx_rate
+        cash_today_display = (
+            (estimate.cash_today * estimate.fx.fx_rate)
+            if estimate.cash_today is not None else gross_display
+        )
+    else:
+        display_currency = program.currency
+        gross_display = estimate.gross_estimate
+        cash_today_display = (
+            estimate.cash_today if estimate.cash_today is not None else gross_display
+        )
+
+    annotations: list[str] = []
+    if monetization_discount_pct is not None:
+        annotations.append(f"less {monetization_discount_pct:g}% monetization discount")
+    if filing_fees is not None:
+        annotations.append(
+            f"less {filing_fees.currency} {filing_fees.amount:,.0f} filing fees"
+        )
+    suffix = f" ({', '.join(annotations)})" if annotations else ""
+    top_sheet_line = (
+        f"{label}{suffix}: -{display_currency} {cash_today_display:,.2f}"
+    )
+
+    headline_caveat = (
+        estimate.caveats[0]
+        if estimate.caveats
+        else "No specific caveats recorded for this program."
+    )
+
+    engineering_view_ref = (
+        f"Engineering view available via the same call without "
+        f"output_view='producer' — includes {len(estimate.caveats)} caveats, "
+        f"{len(estimate.steps)} worked-solution steps, and {sum(len(v) for v in estimate.sources.values())} source URLs."
+    )
+
+    return ProducerSummary(
+        top_sheet_line=top_sheet_line,
+        gross_rebate=Money(amount=gross_display, currency=display_currency),
+        cash_today=Money(amount=max(cash_today_display, 0.0), currency=display_currency),
+        headline_caveat=headline_caveat,
+        engineering_view_ref=engineering_view_ref,
+    )
 
 
 # ─── Pattern handlers ───────────────────────────────────────────────────
@@ -582,27 +844,109 @@ def show(program_id: int):
         click.echo(f"    - {u}")
 
 
+def _parse_spend_currency_args(args: tuple[str, ...]) -> dict[str, float]:
+    """Parse repeated --spend-currency CCY=AMOUNT flags into a dict."""
+    out: dict[str, float] = {}
+    for raw in args:
+        if "=" not in raw:
+            raise click.BadParameter(
+                f"--spend-currency expects CCY=AMOUNT, got {raw!r}"
+            )
+        ccy, amt = raw.split("=", 1)
+        try:
+            out[ccy.strip().upper()] = float(amt)
+        except ValueError as e:
+            raise click.BadParameter(
+                f"--spend-currency amount for {ccy!r} must be a number: {amt!r}"
+            ) from e
+    return out
+
+
 @cli.command()
 @click.option("--program", "program_id", type=int, required=True)
-@click.option("--spend", "qualifying_spend", type=float, required=True,
+@click.option("--spend", "qualifying_spend", type=float, default=None,
               help="Qualifying spend in program-local currency.")
+@click.option("--spend-currency", "spend_currency_args", multiple=True,
+              help="Mixed-currency qualifying-spend component: CCY=AMOUNT. "
+                   "Repeatable. Mutually exclusive with --spend.")
 @click.option("--atl-spend", "atl_spend", type=float, default=0.0)
-@click.option("--fx-target", default="USD", help="Optional cross-currency conversion target.")
-def estimate(program_id: int, qualifying_spend: float, atl_spend: float, fx_target: str):
+@click.option("--fx-target", default="USD", help="Cross-currency conversion target.")
+@click.option("--monetization-discount", "monetization_discount_pct", type=float,
+              default=None,
+              help="Monetization discount as a percentage (e.g., 3 for 3%).")
+@click.option("--filing-fees", "filing_fees_amount", type=float, default=None,
+              help="Filing/audit fees amount.")
+@click.option("--filing-fees-currency", default=None,
+              help="Currency for --filing-fees (default: program currency).")
+@click.option("--producer-view", "producer_view_flag", is_flag=True, default=False,
+              help="Output the top-sheet producer summary; engineering view is default.")
+def estimate(
+    program_id: int,
+    qualifying_spend: Optional[float],
+    spend_currency_args: tuple[str, ...],
+    atl_spend: float,
+    fx_target: str,
+    monetization_discount_pct: Optional[float],
+    filing_fees_amount: Optional[float],
+    filing_fees_currency: Optional[str],
+    producer_view_flag: bool,
+):
     """Estimate the rebate / credit for one program and show the breakdown."""
+    by_currency: Optional[dict[str, float]] = (
+        _parse_spend_currency_args(spend_currency_args) if spend_currency_args else None
+    )
+    fees: Optional[Money] = None
+    if filing_fees_amount is not None:
+        # Default fees currency to program currency if not specified.
+        if filing_fees_currency is None:
+            try:
+                prog_currency = get_program(program_id).currency
+            except ProgramNotFound as e:
+                raise click.ClickException(str(e))
+            filing_fees_currency = prog_currency
+        fees = Money(amount=filing_fees_amount, currency=filing_fees_currency.upper())
+
     try:
         est = estimate_rebate(
-            program_id, qualifying_spend, atl_spend, fx_target=fx_target,
+            program_id,
+            qualifying_spend=qualifying_spend,
+            atl_spend=atl_spend,
+            qualifying_spend_by_currency=by_currency,
+            monetization_discount_pct=monetization_discount_pct,
+            filing_fees=fees,
+            output_view="producer" if producer_view_flag else "engineering",
+            fx_target=fx_target,
         )
-    except (ProgramNotFound, NoRateRule) as e:
+    except (ProgramNotFound, NoRateRule, ValueError) as e:
         raise click.ClickException(str(e))
-    _print_estimate(est)
+
+    if producer_view_flag and est.producer_summary is not None:
+        _print_producer_summary(est)
+    else:
+        _print_estimate(est)
+
+
+def _print_producer_summary(est: RebateEstimate) -> None:
+    """Render a single estimate's producer-view summary."""
+    ps = est.producer_summary
+    if ps is None:
+        # Defensive: caller should only invoke this when summary is present.
+        _print_estimate(est)
+        return
+    click.echo(ps.top_sheet_line)
+    click.echo(f"  gross rebate:   {ps.gross_rebate.currency} {ps.gross_rebate.amount:,.2f}")
+    if abs(ps.cash_today.amount - ps.gross_rebate.amount) > 0.01:
+        click.echo(f"  cash today:     {ps.cash_today.currency} {ps.cash_today.amount:,.2f}")
+    click.echo(f"  headline caveat: {ps.headline_caveat}")
+    click.echo(f"  ({ps.engineering_view_ref})")
 
 
 def _print_estimate(est: RebateEstimate) -> None:
     click.echo(f"#{est.program_id}  {est.program_name}  [{est.jurisdiction_display}]")
     click.echo(f"  rule_applied:   {est.rule_applied}")
     click.echo(f"  gross_estimate: {_render_money(est.gross_estimate, est.currency)}")
+    if est.cash_today is not None:
+        click.echo(f"  cash_today:     {_render_money(est.cash_today, est.currency)}")
     if est.estimate_usd is not None and est.fx is not None:
         stale = " (STALE)" if est.fx.fx_stale else ""
         click.echo(
@@ -629,29 +973,108 @@ def _print_estimate(est: RebateEstimate) -> None:
 @click.option("--spend", "qualifying_spend", type=float, required=True)
 @click.option("--atl-spend", "atl_spend", type=float, default=0.0)
 @click.option("--fx-target", default="USD")
-@click.option("--full", is_flag=True, help="Print full breakdown per program (not just the table).")
-def compare(program_ids: tuple[int, ...], qualifying_spend: float, atl_spend: float,
-            fx_target: str, full: bool):
-    """Compare estimates across multiple programs at the same qualifying_spend."""
-    table = compare_programs(
-        list(program_ids), qualifying_spend, atl_spend,
-        fx_target=fx_target,
-    )
-    click.echo(
-        f"Qualifying spend: {qualifying_spend:,.0f} (fx_target={table.fx_target})\n"
-    )
-    click.echo(f"{'id':>4}  {'jurisdiction':<16}  {'program':<60}  "
-               f"{'rule':<12}  {'gross':>18}  {'usd':>14}  {'caveats':>8}")
-    for r in table.rows:
-        gross = _render_money(r.gross_estimate, r.currency)
-        usd = f"USD {r.estimate_usd:,.0f}" if r.estimate_usd is not None else "—"
-        click.echo(
-            f"{r.program_id:>4}  {r.jurisdiction_display:<16}  {r.program_name[:60]:<60}  "
-            f"{r.rule_applied:<12}  {gross:>18}  {usd:>14}  {r.caveats_count:>8}"
+@click.option("--monetization-discount", "monetization_discount_pct", type=float,
+              default=None,
+              help="Monetization discount as a percentage; applied to every program.")
+@click.option("--filing-fees", "filing_fees_amount", type=float, default=None,
+              help="Filing/audit fees applied to every program (display currency).")
+@click.option("--filing-fees-currency", default=None,
+              help="Currency for --filing-fees (default: --fx-target).")
+@click.option("--full", is_flag=True,
+              help="Output the full engineering breakdown. Default is the "
+                   "producer-view top-sheet summary table.")
+def compare(
+    program_ids: tuple[int, ...],
+    qualifying_spend: float,
+    atl_spend: float,
+    fx_target: str,
+    monetization_discount_pct: Optional[float],
+    filing_fees_amount: Optional[float],
+    filing_fees_currency: Optional[str],
+    full: bool,
+):
+    """Compare estimates across multiple programs at the same qualifying_spend.
+
+    Default output is the producer-view summary (one top-sheet line per
+    program plus headline caveats). Pass --full to get the engineering
+    breakdown per program.
+    """
+    fees: Optional[Money] = None
+    if filing_fees_amount is not None:
+        # For compare, the same Money is applied to every program, so its
+        # currency must be supplied explicitly. Default to fx_target.
+        fees = Money(
+            amount=filing_fees_amount,
+            currency=(filing_fees_currency or fx_target).upper(),
         )
-    if full:
+
+    # Build each estimate with the appropriate view.
+    view: Literal["engineering", "producer"] = "engineering" if full else "producer"
+    estimates: list[RebateEstimate] = []
+    for pid in program_ids:
+        try:
+            estimates.append(estimate_rebate(
+                pid,
+                qualifying_spend=qualifying_spend,
+                atl_spend=atl_spend,
+                monetization_discount_pct=monetization_discount_pct,
+                filing_fees=fees,
+                output_view=view,
+                fx_target=fx_target,
+            ))
+        except (ProgramNotFound, NoRateRule, ValueError) as e:
+            click.echo(click.style(f"  skipped program {pid}: {e}", fg="yellow"), err=True)
+
+    click.echo(f"Qualifying spend: {qualifying_spend:,.0f} (fx_target={fx_target})")
+    if monetization_discount_pct is not None:
+        click.echo(f"Applied monetization discount: {monetization_discount_pct:g}%")
+    if fees is not None:
+        click.echo(f"Applied filing fees: {fees.currency} {fees.amount:,.2f}")
+    click.echo()
+
+    if not full:
+        # Producer view: top-sheet lines per program, sorted by cash-today USD desc.
+        ranked = sorted(
+            estimates,
+            key=lambda e: (e.estimate_usd or 0.0, e.gross_estimate),
+            reverse=True,
+        )
+        for est in ranked:
+            if est.producer_summary is None:
+                _print_estimate(est)
+                continue
+            ps = est.producer_summary
+            click.echo("  " + ps.top_sheet_line)
+            click.echo(f"      gross:           {ps.gross_rebate.currency} "
+                       f"{ps.gross_rebate.amount:,.2f}")
+            # Only show cash-today as a separate line when it differs from
+            # gross (i.e., discount or fees were applied). Same number twice
+            # is noise.
+            if abs(ps.cash_today.amount - ps.gross_rebate.amount) > 0.01:
+                click.echo(f"      cash today:      {ps.cash_today.currency} "
+                           f"{ps.cash_today.amount:,.2f}")
+            click.echo(f"      headline caveat: {ps.headline_caveat}")
+            click.echo()
+    else:
+        # Engineering view: same compact table the original CLI showed,
+        # followed by full breakdowns per program.
+        ranked = sorted(
+            estimates,
+            key=lambda e: (e.estimate_usd or 0.0, e.gross_estimate),
+            reverse=True,
+        )
+        click.echo(f"{'id':>4}  {'jurisdiction':<16}  {'program':<60}  "
+                   f"{'rule':<12}  {'gross':>18}  {'usd':>14}  {'caveats':>8}")
+        for est in ranked:
+            gross = _render_money(est.gross_estimate, est.currency)
+            usd = f"USD {est.estimate_usd:,.0f}" if est.estimate_usd is not None else "—"
+            click.echo(
+                f"{est.program_id:>4}  {est.jurisdiction_display:<16}  "
+                f"{est.program_name[:60]:<60}  {est.rule_applied:<12}  "
+                f"{gross:>18}  {usd:>14}  {len(est.caveats):>8}"
+            )
         click.echo()
-        for est in table.estimates:
+        for est in ranked:
             click.echo("─" * 80)
             _print_estimate(est)
 

@@ -59,6 +59,14 @@ class RateRule:
     # first, then transitional rules, then post-tax interpretation notes.
     caveats: tuple[str, ...] = field(default_factory=tuple)
 
+    # Short producer-facing label for the budget top-sheet line. The full
+    # program_name from the data is too technical for budget readers (e.g.,
+    # "NZSPR International — Live Action Production Rebate (20%)"); this
+    # field holds the version a line producer would actually write
+    # (e.g., "New Zealand 20% Incentive Rebate"). Falls back to program_name
+    # when None.
+    producer_label: str | None = None
+
 
 # Universal caveats appended to every estimate — things the function
 # fundamentally cannot verify (the qualifying_spend input itself).
@@ -86,6 +94,7 @@ RULES: dict[ProgramKey, RateRule] = {
     # ─── United Kingdom ────────────────────────────────────────────────
     ("United Kingdom", "Audio-Visual Expenditure Credit (AVEC) — Film"): RateRule(
         pattern="flat",
+        producer_label="UK AVEC Film Credit (34%)",
         caveats=_UK_AVEC_CAVEATS + (
             "The AVEC VFX Additional Credit (39%) applies separately to qualifying VFX costs "
             "from 1 January 2025. To estimate it, call estimate_rebate on the VFX program with "
@@ -96,6 +105,7 @@ RULES: dict[ProgramKey, RateRule] = {
     ("United Kingdom", "Enhanced AVEC for Independent Film (IFTC)"): RateRule(
         pattern="capped_base",
         base_cap_qualifying=12_000_000.0,  # 80% × £15M total-core base cap
+        producer_label="UK Enhanced AVEC / IFTC (53%)",
         caveats=_UK_AVEC_CAVEATS + (
             "Eligibility ceiling: total core expenditure must not exceed £23.5M. The tool "
             "cannot verify total core expenditure from a qualifying_spend input — productions "
@@ -113,6 +123,7 @@ RULES: dict[ProgramKey, RateRule] = {
     ),
     ("United Kingdom", "AVEC VFX Additional Credit (Film & HETV)"): RateRule(
         pattern="flat",
+        producer_label="UK AVEC VFX Additional Credit (39%)",
         caveats=(
             "qualifying_spend for this program is VFX costs only, not total UK core costs. "
             "The caller is responsible for partitioning a production's spend into VFX and non-VFX "
@@ -132,6 +143,7 @@ RULES: dict[ProgramKey, RateRule] = {
     # ─── New Zealand ───────────────────────────────────────────────────
     ("New Zealand", "NZSPR International — Live Action Production Rebate (20%)"): RateRule(
         pattern="flat",
+        producer_label="New Zealand 20% Incentive Rebate",
         caveats=(
             "Assumes the production is eligible: applicant is a NZ entity (typically an SPV); "
             "production is intended for theatrical release, TV broadcast, or commercial online "
@@ -154,6 +166,7 @@ RULES: dict[ProgramKey, RateRule] = {
     ("New Zealand", "NZSPR International — Production Rebate 5% Uplift"): RateRule(
         pattern="stacking",
         stacks_on=("New Zealand", "NZSPR International — Live Action Production Rebate (20%)"),
+        producer_label="New Zealand 5% Production Uplift",
         caveats=(
             "This is the uplift only. Stacks additively with the parent Live Action Production "
             "Rebate (20%). Call estimate_rebate on the parent program with the same qualifying_spend "
@@ -170,6 +183,7 @@ RULES: dict[ProgramKey, RateRule] = {
     ),
     ("New Zealand", "NZSPR International — PDV Rebate (20%)"): RateRule(
         pattern="flat",
+        producer_label="New Zealand 20% PDV Rebate",
         caveats=(
             "qualifying_spend for this program is QNZPE on PDV (Post / Digital / Visual Effects) "
             "activity only — fees and expenses for PDV personnel, studio/office hire for PDV, "
@@ -185,6 +199,7 @@ RULES: dict[ProgramKey, RateRule] = {
     ("New Zealand", "NZSPR International — PDV Rebate 5% Uplift"): RateRule(
         pattern="stacking",
         stacks_on=("New Zealand", "NZSPR International — PDV Rebate (20%)"),
+        producer_label="New Zealand 5% PDV Uplift",
         caveats=(
             "This is the uplift only. Stacks additively with the parent PDV Rebate (20%). Call "
             "estimate_rebate on the parent program with the same qualifying_spend and sum the "

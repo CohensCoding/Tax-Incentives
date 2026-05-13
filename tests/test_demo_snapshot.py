@@ -33,8 +33,17 @@ DEMO_FILE = ROOT / "docs" / "demo_uk_vs_nz_40m.md"
 DB_PATH = ROOT / "data" / "incentives.db"
 
 # The exact arguments the demo file was generated with. If these change,
-# the snapshot must change too — keep them identical.
-COMPARE_ARGS = ["compare", "5", "6", "1", "2", "--spend", "40000000", "--full"]
+# the snapshot must change too — keep them identical. The Phase 1
+# regeneration moved from `--full` (engineering breakdown default) to
+# the new producer-view default, with monetization discount and filing
+# fees applied to match a real budget line.
+COMPARE_ARGS = [
+    "compare", "5", "6", "1", "2",
+    "--spend", "40000000",
+    "--monetization-discount", "3",
+    "--filing-fees", "75000",
+    "--filing-fees-currency", "NZD",
+]
 
 
 def _extract_fenced_block(markdown: str) -> str:
